@@ -1,1 +1,1 @@
-# GraphInspectionPlanning
+# Graph Inspection Planning
