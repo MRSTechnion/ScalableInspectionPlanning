@@ -8,10 +8,10 @@ Technion – Israel Institute of Technology
 <!-- (WAFR 2026) -->
 
 ---
-<div style="background-color: white; padding: 10px; display: inline-block;">
+
+<div align="center" style="background-color: white; padding: 15px; border-radius: 8px;">
    <img src="figures/IPP.svg" width="600">
 </div>
-
 
 ## Overview
 
