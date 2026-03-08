@@ -8,7 +8,7 @@ Technion – Israel Institute of Technology
 <!-- (WAFR 2026) -->
 
 ---
-<img src="figures/ipp.svg" width="600">
+<img src="figures/IPP.svg" width="600">
 
 ## Overview
 
