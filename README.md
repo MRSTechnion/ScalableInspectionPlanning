@@ -10,7 +10,7 @@ Technion – Israel Institute of Technology
 ---
 
 <div align="center" style="background-color: white; padding: 15px; border-radius: 8px;">
-   <img src="figures/IPP.svg" width="600">
+   <img src="figures/IPP.png" width="600">
 </div>
 
 ## Overview
