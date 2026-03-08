@@ -4,13 +4,15 @@ Official implementation of the paper:
 
 **Scalable Inspection Planning via Flow-based Mixed Integer Linear Programming**
 
-Adir Morgan, Kiril Solovey, Oren Salzman; 
+Adir Morgan, Kiril Solovey, Oren Salzman
+
 Technion – Israel Institute of Technology
 <!-- (WAFR 2026) -->
 
 ---
 <p align="center">
-  <img src="figures/IPP.png" width="350">
+    <img src="figures/bridge.png" width="350">
+    <img src="figures/IPP.png" width="350">
 </p>
 
 
