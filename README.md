@@ -114,7 +114,7 @@ pip install -r requirements.txt
 Make sure Gurobi is properly licensed and accessible from Python (`gurobipy`).
 
 ---
-
+<!-- 
 ## Running the Solver
 
 ### Example: Group-Cutset (recommended)
@@ -136,6 +136,7 @@ python experiments/large_scale.py \
 ```
 
 ---
+-->
 
 ## Formulation Summary
 
@@ -154,10 +155,10 @@ The **Group-Cutset Branch-and-Cut** formulation:
 * Scales to graphs with **15,000+ vertices and thousands of POIs**
 
 ---
-
+<!--
 ## Simulator
 
-The `simulator/` module generates configurable GIP instances:
+The `Simulator/` module generates configurable GIP instances:
 
 * 2D maze environments
 * RRG roadmap construction
@@ -167,7 +168,8 @@ The `simulator/` module generates configurable GIP instances:
   * Number of POIs `k`
   * Sensor FOV angle
   * Inspection range
-    
+-->
+
 <!-- 
 Example:
 
@@ -183,18 +185,6 @@ python simulator/generate_instance.py \
 
 ## Reproducing Paper Results
 -->
-
-
----
-
-## Implementation Notes
-
-* The Group-Cutset formulation uses **lazy constraint callbacks** in Gurobi.
-* The combined separation oracle:
-
-  * Validates integer solutions using SCC checks.
-  * Samples groups for fractional separation.
-* The default heuristic uses **covering tree + greedy matching** for scalability.
 
 ---
 <!-- 
