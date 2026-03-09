@@ -18,7 +18,7 @@ Technion – Israel Institute of Technology
 
 ## Overview
 
-This repository implements scalable Mixed Integer Linear Programming (MILP) formulations for the **Graph Inspection Planning (GIP)** problem.
+This repository implements scalable Mixed Integer Linear Programming (MILP) solvers for the **Graph Inspection Planning (GIP)** problem.
 
 Inspection Planning (IP) asks:
 
@@ -26,8 +26,8 @@ Inspection Planning (IP) asks:
 
 After discretization via roadmap-based motion planning, the problem becomes **Graph Inspection Planning (GIP)** — a combinatorial optimization problem that jointly enforces:
 
-* ✅ POI coverage
 * ✅ Global path connectivity
+* ✅ POI coverage
 * ✅ Minimum traversal cost
 
 GIP generalizes both **Set Cover** and **TSP**, making it NP-hard and challenging at real-world scales.
@@ -65,8 +65,7 @@ This repository includes:
 
 * CRISP medical inspection scenario
 * Bridge inspection scenario
-* Large-scale simulated planar environments
-* Small-scale controlled benchmarks
+* Large and Small-scale simulated planar environments
 
 ---
 
@@ -74,7 +73,7 @@ This repository includes:
 
 ```text
 .
-├── gip/
+├── GIP/
 │   ├── separation/            
 │   ├── heuristics/            
 │   ├── solvers/               
@@ -85,13 +84,12 @@ This repository includes:
 │   ├── bridge/
 │   └── simulated/
 │
-├── experiments/
-│   ├── real_world.py
-│   ├── large_scale.py
-│   ├── ablation_oracles.py
-│   └── ablation_heuristics.py
+├── Utils/
+│   ├── Readers/
+│   ├── ResultsAnalysis/
+│   └── GurobiUtils.py
 │
-├── simulator/                 
+├── Simulator/                 
 ├── requirements.txt
 └── README.md
 ```
