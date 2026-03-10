@@ -2,32 +2,26 @@ import networkx as nx
 from gurobipy import Model, GRB, quicksum, GurobiError
 
 # --- Imports from your project ---
-import InspectionPresolve
 from GIP.heuristics import InspectionPostsolve
-import Postsolve
 from GIP.solver_utils.SolutionValidation import validate_solution_groups
 from GIP.solver_utils import IP_to_Group
 from Utils.Readers import IRIS_reader, ExperimentPicker
 from GIP.heuristics.InspectionHeuristic import TM_solver_groups_scipy
-import GraphGeneration, GraphDrawing
 import argparse
+import os
 
-import sys
-sys.path.append("/home/adir/PycharmProjects/SteinerTreeSolver/Simulator")
+# import sys
+# sys.path.append("/home/adir/PycharmProjects/SteinerTreeSolver/Simulator")
 
 
 heuristic_freq = 10
-TimeLim = 1000
 
-
-def Solve_BnB_Charge(G, S, r, vertex_poi_vis, I, sure_edges=None):
+def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name='', TimeLim=1000, out_path=''):
     m = Model("GIP_Charge")
-
     m.setParam('TimeLimit', TimeLim)
-    Experiment_name = Experiment.split("/")[-1].split(".")[0]
-
-    # m.setParam('LogFile', f"/home/adir/Desktop/IP-results/grb_logs/Augmented_Charge_{Experiment_name}_TL{TimeLim}.log")
-    m.setParam('LogFile', f"/home/adir/Desktop/IP-results/grb_logs_final/Charge_{Experiment_name}_TL{TimeLim}.log")
+    if out_path != '':
+        output_path_full = os.path.join(out_path, f"Cutset_{Experiment_name}_TL-{TimeLim}.log")
+        m.setParam('LogFile', output_path_full)
 
     # Directed arc variables x(u,v)
     x = {}
@@ -44,13 +38,13 @@ def Solve_BnB_Charge(G, S, r, vertex_poi_vis, I, sure_edges=None):
     )
 
     # Core Charge Constraints
-    y = generate_charge_constraints(G, S, r, m, x)
+    y = generate_charge_constraints(G, S, root, m, x)
     m.update()
 
     # --- AUGMENTATION: Setup Data for Callbacks ---
     m._G = G
     m._D = G.to_directed()  # CutsOracle needs directed graph
-    m._S, m._r, m._I = S, r, I
+    m._S, m._r, m._I = S, root, I
     m._vertex_poi_vis = vertex_poi_vis
     m._x = x
     m._unc_groups = None
@@ -294,10 +288,10 @@ if __name__ == '__main__':
 
 
     # ---- Solve Augmented Charge ----
-    tour_edges = Solve_BnB_Charge(G, S, root, vertex_poi_vis, set(I))
+    tour_edges = RunSolver(G, S, root, vertex_poi_vis, set(I))
 
     # Post-processing usually not needed for exact solution, but useful if heuristic finished last
-    tour_edges, tour_weight, _, _ = Postsolve.ST_to_tour_christofides(G, tour_edges, start=root)
+    tour_edges, tour_weight, _, _ = InspectionPostsolve.ST_to_tour_christofides_scipy(G, tour_edges, start=root)
 
     print(f"Final Tour Edges: {len(tour_edges)}")
     validate_solution_groups(G, S, tour_edges)

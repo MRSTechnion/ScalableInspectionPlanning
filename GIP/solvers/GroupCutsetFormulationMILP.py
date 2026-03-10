@@ -19,7 +19,7 @@ use_creep_flow = False
 max_groups_per_iteration = 250
 
 def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name='', TimeLim=1000, out_path=''):
-    m = Model("GroupTSP")
+    m = Model("GroupCutset")
     m.setParam('TimeLimit', TimeLim)
     if out_path != '':
         output_path_full = os.path.join(out_path, f"Cutset_{Experiment_name}_TL-{TimeLim}.log")

@@ -1,33 +1,25 @@
 import argparse
 
-import GraphGeneration
-import GraphDrawing
-from GIP.heuristics import InspectionPostsolve
-import Postsolve
-from HeuristicSolvers import TM_solver_groups
-import InspectionPresolve
 
-from SteinerTreeProblem import STProblem
+from GIP.heuristics import InspectionPostsolve
+
 from gurobipy import Model, GRB, quicksum
-from Presolve import Presolver_DegreeTest1, Special_distance_edge_elimination, retrace_solution
-from ST_BnB_solver import edges_from_model, connectivity_cut
 from GIP.solver_utils.SolutionValidation import validate_solution_groups
 
 from Utils.Readers.SimInstanceIO import load_simulated_instance
-import sys
-sys.path.append("/home/adir/PycharmProjects/SteinerTreeSolver/Simulator")
+import os
+
+# import sys
+# sys.path.append("/home/adir/PycharmProjects/SteinerTreeSolver/Simulator")
 
 heuristic_freq = 10
 
-
-TimeLim = 500
-
-def RunSolver(G, S, I, vertex_poi_vis, r, sure_edges=None, num_commodities=2):
-    m = Model(f"GroupTSP_MCF")
+def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name='', TimeLim=1000, out_path=''):
+    m = Model("GIP_Charge")
     m.setParam('TimeLimit', TimeLim)
-    Experiment_name = Experiment.split("/")[-1].split(".")[0]
-
-    m.setParam('LogFile', f"/home/adir/Desktop/IP-results/grb_logs/FMCF_{Experiment_name}_TL{TimeLim}.log")
+    if out_path != '':
+        output_path_full = os.path.join(out_path, f"Cutset_{Experiment_name}_TL-{TimeLim}.log")
+        m.setParam('LogFile', output_path_full)
 
     D = G.to_directed()
     D_edges = list(D.edges())
@@ -58,11 +50,11 @@ def RunSolver(G, S, I, vertex_poi_vis, r, sure_edges=None, num_commodities=2):
             continue
 
         # A. Source: Flow K must start at Root
-        m.addConstr(quicksum(f[(k, r, v)] for _, v in D.out_edges(r)) == 1, name=f'src_{k}')
+        m.addConstr(quicksum(f[(k, root, v)] for _, v in D.out_edges(root)) == 1, name=f'src_{k}')
 
         # B. Transit: Flow conservation everywhere else
         for i in D.nodes():
-            if i == r or i in S[k]:
+            if i == root or i in S[k]:
                 continue  # Handled by Source and Sink rules above
 
             # In == Out (Flow passes through)

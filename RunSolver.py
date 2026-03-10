@@ -1,10 +1,15 @@
 from GIP import heuristics
 from GIP.solver_utils import IP_to_Group, SolutionValidation
 import argparse
-from GIP.solvers import GroupCutsetFormulationMILP
+from GIP.solvers import (GroupCutsetFormulationMILP, ChargeFormulationMILP, MultiCommodityFlowFormulationMILP,
+                         SingleCommodityFlowFormulationMILP)
 from Utils.Readers import ExperimentPicker, IRIS_reader
 
-solver_entry = {"GroupCutset": GroupCutsetFormulationMILP.RunSolver}
+solver_entry = {"GroupCutset": GroupCutsetFormulationMILP.RunSolver,
+                "Charge": ChargeFormulationMILP.RunSolver,
+                "MCF": MultiCommodityFlowFormulationMILP.RunSolver,
+                "SCF": SingleCommodityFlowFormulationMILP.RunSolver
+                }
 
 def main():
     parser = argparse.ArgumentParser(

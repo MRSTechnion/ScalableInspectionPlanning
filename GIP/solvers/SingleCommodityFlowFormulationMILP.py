@@ -1,35 +1,26 @@
 import argparse
 
-import GraphGeneration
-import GraphDrawing
 from GIP.heuristics import InspectionPostsolve
-import Postsolve
-from HeuristicSolvers import TM_solver_groups
 from GIP.solver_utils import IP_to_Group
 from Utils.Readers import IRIS_reader, ExperimentPicker
-import InspectionPresolve
 
-from SteinerTreeProblem import STProblem
 from gurobipy import Model, GRB, quicksum, GurobiError
 from GIP.heuristics.InspectionHeuristic import TM_solver_groups_scipy
-from Presolve import Presolver_DegreeTest1, Special_distance_edge_elimination, retrace_solution
-from ST_BnB_solver import edges_from_model, connectivity_cut
 from GIP.solver_utils.SolutionValidation import validate_solution_groups
 
-import sys
-sys.path.append("/home/adir/PycharmProjects/SteinerTreeSolver/Simulator")
+import os
+# import sys
+# sys.path.append("/home/adir/PycharmProjects/SteinerTreeSolver/Simulator")
 
 heuristic_freq = 10
 
-TimeLim = 1000
 
-def RunSolver(G, S, I, vertex_poi_vis, r, sure_edges=None):
-    m = Model("GroupTSP_SCF")  # Updated Name
-
+def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name='', TimeLim=1000, out_path=''):
+    m = Model("GIP_SCF")
     m.setParam('TimeLimit', TimeLim)
-
-    Experiment_name = Experiment.split("/")[-1].split(".")[0]
-    m.setParam('LogFile', f"/home/adir/Desktop/IP-results/grb_logs_final/SCF_{Experiment_name}_TL{TimeLim}.log")
+    if out_path != '':
+        output_path_full = os.path.join(out_path, f"Cutset_{Experiment_name}_TL-{TimeLim}.log")
+        m.setParam('LogFile', output_path_full)
 
     D = G.to_directed()
     D_edges = list(D.edges())
@@ -51,7 +42,7 @@ def RunSolver(G, S, I, vertex_poi_vis, r, sure_edges=None):
     # --- Constraints ---
 
     # 1. Routing Constraints (Same as before)
-    m.addConstr(quicksum(y[(r, v)] for _, v in D.out_edges(r)) >= 1, name='root_outflow')
+    m.addConstr(quicksum(y[(root, v)] for _, v in D.out_edges(root)) >= 1, name='root_outflow')
 
     for id, v_g in S.items():
         m.addConstr(quicksum(y[u, v] for u, v in D.in_edges(v_g)) >= 1, name=f'group_inflow_{id}')
@@ -68,7 +59,7 @@ def RunSolver(G, S, I, vertex_poi_vis, r, sure_edges=None):
 
     # Flow Conservation:
     for i in D.nodes():
-        if i == r:
+        if i == root:
             continue  # Root is the source, we don't constrain its net flow (it supplies everything)
 
         flow_in = quicksum(f[u, i] for u, _ in D.in_edges(i))
@@ -82,7 +73,7 @@ def RunSolver(G, S, I, vertex_poi_vis, r, sure_edges=None):
     # ---------------------------------------------------------
     # OPTIMIZATION PRE-COMPUTATION & STRUCTURES
     # ---------------------------------------------------------
-    m._G, m._D, m._S, m._r, m._I = G, D, S, r, I
+    m._G, m._D, m._S, m._r, m._I = G, D, S, root, I
     m._vertex_poi_vis = vertex_poi_vis
     m._x = y  # Callback uses 'y' logic (binary vars)
     m._unc_groups = None
@@ -185,11 +176,8 @@ def cut_heuristic_callback(model, where):
                     model._Glp.edges[u, v]['weight'] = max(0, (1-max(lp[u, v], lp[v, u]))) * model._G.edges[u, v]['weight']
 
                 tree_solution_edges, _ = TM_solver_groups_scipy(model._Glp, model._r, model._I.copy(), model._vertex_poi_vis)
-                solution_edges, sol_weight, _, _ = InspectionPostsolve.ST_to_tour_christofides_scipy(model._G, tree_solution_edges, start=root)
-                # solution_edges, sol_weight, _, _ = InspectionPostsolve.ST_to_tour_christofides_scipy_greedy(model._G, tree_solution_edges, start=root)
-
-                # tree_solution_edges, _ = list(TM_solver_groups(model._G, model._r, model._I.copy(), model._vertex_poi_vis))
-                # solution_edges, _, _, _ = Postsolve.ST_to_tour_christofides(model._G, tree_solution_edges, start=root)
+                solution_edges, sol_weight, _, _ = InspectionPostsolve.ST_to_tour_christofides_scipy(model._G, tree_solution_edges,
+                                                                                                     start=model._r)
 
                 inject_suggested_solution(model, solution_edges, where)
 
