@@ -46,7 +46,7 @@ def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name=''
             m.addConstr(f[(k, u, v)] <= y[(u, v)] , name='flow-capacity_connection')
 
     for k in Ks:
-        if r in S[k]:
+        if root in S[k]:
             continue
 
         # A. Source: Flow K must start at Root

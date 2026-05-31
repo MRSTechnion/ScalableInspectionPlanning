@@ -6,13 +6,14 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
-import HeuristicSolvers
+import GIP.heuristics.InspectionHeuristic
 import Simulator.InspectionMap as InspectionMap
-import GSTDirectedFormulationMILP
-import Postsolve
 from RobotDrone2D import Cspace
 
 from MotionPlanning import RRT, RRG
+
+from GIP.solvers.MultiCommodityFlowFormulationMILP import RunSolver
+from GIP.heuristics import InspectionPostsolve
 
 
 def visibility_graph(G, plan_map, max_view_distance=np.inf, fov_deg=360):
@@ -37,7 +38,7 @@ def visibility_graph(G, plan_map, max_view_distance=np.inf, fov_deg=360):
 
     return S, vertex_vis, I
 
-def plot_sbmp_graph(G: nx.Graph, plan_map, root=0, title: str = "RRT",
+def plot_sbmp_graph(G: nx.Graph, plan_map, root=0, title: str = "",
                     solution=None, sight_radius=None):
     if hasattr(plan_map, "grid"):
         grid = plan_map.grid
@@ -50,7 +51,17 @@ def plot_sbmp_graph(G: nx.Graph, plan_map, root=0, title: str = "RRT",
     bg_idx = np.zeros_like(grid)
     bg_idx[grid == 1] = 1
     cmap = mcolors.ListedColormap(["#FFFFFF", "#8B4513"]) # White, Brown
-    ax.imshow(bg_idx, origin='upper', extent=[0, w, h, 0], cmap=cmap, zorder=1)
+    ax.imshow(
+        bg_idx,
+        origin='upper',
+        extent=(-0.5, w - 0.5, h - 0.5, -0.5),
+        cmap=cmap,
+        interpolation='nearest',
+        zorder=1,
+    )
+
+    ax.set_xlim(-0.5, w - 0.5)
+    ax.set_ylim(h - 0.5, -0.5)
 
     # 2. Plot POIs (Goals) as Circles
     for gid, (gx, gy) in plan_map.goals.items():
@@ -62,12 +73,12 @@ def plot_sbmp_graph(G: nx.Graph, plan_map, root=0, title: str = "RRT",
         for u, v in G.edges:
             x0, y0, _ = G.nodes[u]['config']
             x1, y1, _ = G.nodes[v]['config']
-            ax.plot([x0, x1], [y0, y1], color='turquoise', lw=1, alpha=0.5, zorder=2)
+            ax.plot([x0, x1], [y0, y1], color='turquoise', lw=1, alpha=0.3, zorder=2)
 
         # 4. Plot sampled nodes (Small dots)
         xs = [G.nodes[n]['config'][0] for n in G.nodes]
         ys = [G.nodes[n]['config'][1] for n in G.nodes]
-        ax.scatter(xs, ys, s=3, c='black', alpha=0.5, zorder=3)
+        ax.scatter(xs, ys, s=3, c='black', alpha=0.3, zorder=3)
 
 
         # 5. Plot Root (Large Green Circle)
@@ -123,15 +134,15 @@ def display_solution(G: nx.Graph, plan_map, solution, I, root=0, title="", sight
     for u, v in G.edges:
         x0, y0, _ = G.nodes[u]['config']
         x1, y1, _ = G.nodes[v]['config']
-        ax.plot([x0, x1], [y0, y1], color='turquoise', linewidth=0.7, alpha=1.0, zorder=2)
+        ax.plot([x0, x1], [y0, y1], color='turquoise', linewidth=0.7, alpha=0.1, zorder=2)
 
     # Plot sampled nodes
     xs = [G.nodes[n]['config'][0] for n in G.nodes]
     ys = [G.nodes[n]['config'][1] for n in G.nodes]
-    ax.scatter(xs, ys, s=6, c='black', alpha=0.6, zorder=3)
+    ax.scatter(xs, ys, s=6, c='black', alpha=0.1, zorder=3)
 
     # Plot root
-    ax.scatter(G.nodes[root]['config'][0], G.nodes[root]['config'][1], s=6, c='lime', alpha=1.0, zorder=4)
+    ax.scatter(G.nodes[root]['config'][0], G.nodes[root]['config'][1], s=8, c='lime', alpha=1.0, zorder=4)
 
     # Plot Solution Path
     solution_nodes = set()
@@ -139,7 +150,7 @@ def display_solution(G: nx.Graph, plan_map, solution, I, root=0, title="", sight
         for u, v in solution:
             x0, y0, _ = G.nodes[u]['config']
             x1, y1, _ = G.nodes[v]['config']
-            ax.plot([x0, x1], [y0, y1], color='darkgreen', linewidth=1.5, alpha=0.9, zorder=5)
+            ax.plot([x0, x1], [y0, y1], color='darkgreen', linewidth=3, alpha=0.9, zorder=5)
             solution_nodes.add(u)
 
 
@@ -321,11 +332,11 @@ if __name__ == '__main__':
     #
 
     # ---- Map demo ----
-    width, height = 50, 50
+    width, height = 200, 200
 
     plan_map = InspectionMap.GameMap(width, height)
     plan_map.add_L_obstacles(
-        count=20, value=1, min_len=3, max_len=10,
+        count=100, value=1, min_len=5, max_len=15,
         thickness=1, padding=1, forbid=[(1, 1)],
     )
 
@@ -334,41 +345,33 @@ if __name__ == '__main__':
     start_position = init_config[:-1]
 
     # plan_map.place_object(*start_position, 5)
-    K = 20
+    K = 400
     goals = plan_map.scatter_goals(K, value=9, forbid=[start_position])
 
     C_space = Cspace(width, height)
 
 
-    N = 1000
+    N = 5000
 
-    eta = 3
-    T = RRT(C_space, plan_map, N, eta, init_config, res=1.0, seed=seed)
+    eta = 5
+    T = RRT(C_space, plan_map, N, eta, init_config, res=0.5, seed=seed)
     G = RRG(T, max_deg=6, max_edge_dist=15.0)
 
-    S, vertex_poi_vis, I = visibility_graph(G, plan_map, max_view_distance=40, fov_deg=50)
+    S, vertex_poi_vis, I = visibility_graph(G, plan_map, max_view_distance=5, fov_deg=360)
     root = 0
 
-    A = nx.empty_graph()
-    plot_sbmp_graph(A, plan_map, title="")
-    plot_sbmp_graph(T, plan_map, title="")
+    # A = nx.empty_graph()
+    # plot_sbmp_graph(A, plan_map, title="")
+    # plot_sbmp_graph(T, plan_map, title="")
     plot_sbmp_graph(G, plan_map, title="")
 
-    # sol_iter = 5
-    # for part_sol in solution_process:
-    #     plot_sbmp_graph(G, plan_map, solution=part_sol, title=f"Inspection Tree - Iteration #{sol_iter}")
-    #     sol_iter += 10
+    # # --- Demonstrate solvers ---
+    # root = 0
     #
-
-
-    # solution_edges = [(0, 4), (4, 8), (8, 9), (9, 10), (10, 29), (29, 134), (134, 343), (343, 447), (447, 439), (439, 209),
-    #        (209, 257), (257, 303), (303, 396), (396, 115), (115, 280), (280, 223), (223, 416), (416, 469), (469, 473),
-    #        (473, 286), (286, 239), (239, 305), (305, 357), (357, 480), (480, 437), (437, 164), (164, 94), (94, 224),
-    #        (224, 103), (103, 127), (127, 161), (161, 267), (267, 193), (193, 331), (331, 425), (425, 486), (486, 472),
-    #        (472, 192), (192, 183), (183, 163), (163, 370), (370, 482), (482, 141), (141, 130), (130, 491), (491, 400),
-    #        (400, 354), (354, 430), (430, 187), (187, 59), (59, 48), (48, 117), (117, 0)]
+    # tour_edges = RunSolver(G, S, set(I), vertex_poi_vis, root, out_path='/home/adir/Desktop')
+    # solution_edges, tour_weight, _, _ = InspectionPostsolve.ST_to_tour_christofides_scipy(G, tour_edges, start=root)
     #
-    # display_solution(G, plan_map, solution_edges, I, title="", sight_radius=None)
+    # plot_sbmp_graph(G, plan_map, solution=solution_edges)
 
     #
     # plot_sbmp_graph(G, plan_map, solution=solution_edges, title="Inspection Tree + Matching")

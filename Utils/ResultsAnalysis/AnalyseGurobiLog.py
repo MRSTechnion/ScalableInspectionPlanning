@@ -155,18 +155,23 @@ def plot_gap(ax, df_aligned: pd.DataFrame, label: str, color: str):
 
 if __name__ == "__main__":
     from matplotlib.lines import Line2D
-
-    for Experiment in ["Drone1000", "Drone2000", "Crisp1000", "Crisp2000"]:
-
+    #
+    # for Experiment in ["Drone1000", "Drone2000", "Crisp1000", "Crisp2000"]:
+    for Experiment in ["Crisp1000"]:
         log_files = [
-            f"/home/adir/Desktop/IP-results/grb_logs_final/Cutset_{Experiment}_TL1000.log",
-            f"/home/adir/Desktop/IP-results/grb_logs_final/SCF_{Experiment}_TL1000.log",
-            f"/home/adir/Desktop/IP-results/grb_logs_final/Charge_{Experiment}_TL1000.log",
+            f"/home/adir/Desktop/wafr26-sub/IP-results/grb_logs_final/Cutset_{Experiment}_TL1000.log",
+            # f"/home/adir/Desktop/IP-results/grb_logs_final/SCF_{Experiment}_TL1000.log",
+            f"/home/adir/Desktop/wafr26-sub/IP-results/grb_logs_final/Charge_{Experiment}_TL1000.log",
         ]
 
-        legend_names = ["Group-Cutset", "SCF", "Charge"]
-        file_colors = ['#1f77b4', '#2ca02c', 'red']
+        # legend_names = ["Group-Cutset", "SCF", "Charge"]
+        # file_colors = ['#1f77b4', '#2ca02c', 'red']
 
+        legend_names = ["Ours", "Mizutani et. al."]
+        file_colors = ['#1f77b4', 'red']
+
+        # legend_names = ["Solver"]
+        # file_colors = ['#2ca02c']
         # ---------- Load + preprocess ----------
         processed = {}
         senses = {}
@@ -187,12 +192,14 @@ if __name__ == "__main__":
             ax.tick_params(axis="x", labelsize=25)
             ax.tick_params(axis="y", labelsize=25)
 
-            if Experiment == "Drone1000":
-                ax.set_ylim(400, 1000)
-            elif Experiment == "Drone2000":
-                ax.set_ylim(400, 1200)
-            elif Experiment in ["Crisp1000", "Crisp2000"]:
-                ax.set_ylim(0, 2)
+            # if Experiment == "Drone1000":
+            #     ax.set_ylim(400, 1000)
+            # elif Experiment == "Drone2000":
+            #     ax.set_ylim(400, 1200)
+            # elif Experiment in ["Crisp1000", "Crisp2000"]:
+            #     ax.set_ylim(0, 2)
+
+            ax.set_ylim(0, 3)
 
         def apply_gap_axes(ax):
             ax.set_xlabel("Time (s)")
@@ -204,18 +211,19 @@ if __name__ == "__main__":
             ax.tick_params(axis="y", labelsize=25)
 
         # ---------- 1) One PDF per scenario (Objective+Bounds) ----------
+        fig_obj, ax_obj = plt.subplots(figsize=(13, 9))
+
         for i, lf in enumerate(log_files):
-            fig_obj, ax_obj = plt.subplots(figsize=(13, 9))
             c = file_colors[i % len(file_colors)]
 
             plot_objective_bounds(ax_obj, aligned[lf], legend_names[i], c, senses[lf])
             apply_obj_axes(ax_obj)
 
-            # IMPORTANT: no legend on the per-scenario Figures
-            fig_obj.tight_layout()
-            out = os.path.join(OUTPUT_DEST, f"{Experiment}_{legend_names[i]}_ObjBounds.pdf")
-            fig_obj.savefig(out, format="pdf", bbox_inches="tight")
-            plt.close(fig_obj)
+        # IMPORTANT: no legend on the per-scenario Figures
+        fig_obj.tight_layout()
+        out = os.path.join(OUTPUT_DEST, f"{Experiment}_{legend_names[i]}_ObjBounds.pdf")
+        fig_obj.savefig(out, format="pdf", bbox_inches="tight")
+        plt.close(fig_obj)
 
         # ---------- (Optional) One PDF per scenario (Gap) ----------
         # If you also want 3 separate gap PDFs, keep this block; otherwise remove it.
@@ -223,13 +231,13 @@ if __name__ == "__main__":
             fig_gap, ax_gap = plt.subplots(figsize=(13, 9))
             c = file_colors[i % len(file_colors)]
 
-            plot_gap(ax_gap, aligned[lf], legend_names[i], c)
-            apply_gap_axes(ax_gap)
+        plot_gap(ax_gap, aligned[lf], legend_names[i], c)
+        apply_gap_axes(ax_gap)
 
-            fig_gap.tight_layout()
-            out = os.path.join(OUTPUT_DEST, f"{Experiment}_{legend_names[i]}_Gap.pdf")
-            fig_gap.savefig(out, format="pdf", bbox_inches="tight")
-            plt.close(fig_gap)
+        fig_gap.tight_layout()
+        out = os.path.join(OUTPUT_DEST, f"{Experiment}_{legend_names[i]}_Gap.pdf")
+        fig_gap.savefig(out, format="pdf", bbox_inches="tight")
+        plt.close(fig_gap)
 
         method_handles = [
             Line2D([0], [0], color=file_colors[i], lw=2.6, linestyle="-")

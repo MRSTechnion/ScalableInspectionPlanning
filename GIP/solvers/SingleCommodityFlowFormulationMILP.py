@@ -19,12 +19,15 @@ def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name=''
     m = Model("GIP_SCF")
     m.setParam('TimeLimit', TimeLim)
     if out_path != '':
-        output_path_full = os.path.join(out_path, f"Cutset_{Experiment_name}_TL-{TimeLim}.log")
+        output_path_full = os.path.join(out_path, f"SCF_{Experiment_name}_TL-{TimeLim}.log")
         m.setParam('LogFile', output_path_full)
 
     D = G.to_directed()
     D_edges = list(D.edges())
     num_nodes = D.number_of_nodes()
+
+    if sure_edges is None:
+        sure_edges = []
 
     # 1. Binary Variables (Routing)
     lb = {e: (1.0 if e in sure_edges else 0.0) for e in D_edges}

@@ -28,6 +28,10 @@ def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name=''
 
     D = G.to_directed()
     D_edges = list(D.edges())
+
+    if sure_edges is None:
+        sure_edges = []
+
     lb = {e: (1.0 if e in sure_edges else 0.0) for e in D_edges}  # pin sure edges to 1
 
     dir_edge_to_var = m.addVars(D_edges, vtype=GRB.BINARY, lb=lb, ub=1.0, name="x")

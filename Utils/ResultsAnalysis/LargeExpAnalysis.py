@@ -21,28 +21,29 @@ K_VALUES = [1000, 2500, 5000, 7500]
 
 DATA = {
     3500: {
-        "Charge": [86.6, 84.3, 81.7, 81.6],
-        "Single Commodity Flow": [79.6, 76.8, 75.4, 75.2],
+        "Mizutani et. al.": [86.6, 84.3, 81.7, 81.6],
+        # "Single Commodity Flow": [79.6, 76.8, 75.4, 75.2],
         "Group-Cutset": [48.8, 52.7, 51.7, 53.5],
     },
     5000: {
-        "Charge": [88.1, 87.0, 84.9, 84.1],
-        "Single Commodity Flow": [86.6, 84.8, 83.2, 83.1],
+        "Mizutani et. al.": [88.1, 87.0, 84.9, 84.1],
+        # "Single Commodity Flow": [86.6, 84.8, 83.2, 83.1],
         "Group-Cutset": [55.8, 61.8, 60.0, 60.6],
     },
     10000: {
-        "Charge": [94.7, 95.5, 95.2, 95.2],
-        "Single Commodity Flow": [94.5, 95.1, 94.9, 94.8],
+        "Mizutani et. al.": [94.7, 95.5, 95.2, 95.2],
+        # "Single Commodity Flow": [94.5, 95.1, 94.9, 94.8],
         "Group-Cutset": [68.9, 72.3, 75.2, 77.3],
     },
     15000: {
-        "Charge": [98.2, 95.8, 96.0, 96.6],
-        "Single Commodity Flow": [96.8, 96.5, 96.6, 96.6],
+        "Mizutani et. al.": [98.2, 95.8, 96.0, 96.6],
+        # "Single Commodity Flow": [96.8, 96.5, 96.6, 96.6],
         "Group-Cutset": [75.5, 78.2, 83.6, 84.3],
     },
 }
 
 STYLES = {
+    "Mizutani et. al.": {"color": 'red', "marker": "o", "linestyle": "-"},
     "Charge": {"color": 'red', "marker": "o", "linestyle": "-"},
     "Single Commodity Flow": {"color": "#2ca02c", "marker": "o", "linestyle": "-"},
     "Group-Cutset": {"color": '#1f77b4', "marker": "o", "linestyle": "-"},
