@@ -179,8 +179,12 @@ def ST_to_tour_christofides_scipy(
                 continue
             nodes = [to_v(i) for i in path_idx]
             for a, b in zip(nodes, nodes[1:]):
-                M.add_edge(a, b, weight=G[a][b][weight])
-                matching_edges.append((a, b))
+                try:
+                    M.add_edge(a, b, weight=G[a][b][weight])
+                    matching_edges.append((a, b))
+                except KeyError:
+                    M.add_edge(b, a, weight=G[b][a][weight])
+                    matching_edges.append((b, a))
 
     # --- Euler tour/path ---
     if return_to_start:

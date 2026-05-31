@@ -1,11 +1,12 @@
 import argparse
 from GIP.heuristics import InspectionPostsolve
 from GIP.solver_utils import IP_to_Group
-from Utils.Readers import IRIS_reader, ExperimentPicker
+from Utils.Readers import IRIS_reader, ExperimentPicker, SimInstanceIO
 from gurobipy import Model, GRB, quicksum, GurobiError
 from GIP.heuristics.InspectionHeuristic import TM_solver_groups_scipy
 from GIP.solver_utils.SolutionValidation import validate_solution_groups
 from GIP.seperation import CutsOracle
+
 import os
 # import sys
 # sys.path.append("/home/adir/PycharmProjects/SteinerTreeSolver/Simulator")
@@ -149,7 +150,13 @@ def cut_heuristic_callback(model, where):
         if model._heuristic_counter % heuristic_freq == 0:
             # Generate primal heuristic solution considering LP
             for u, v in model._Glp.edges():
-                model._Glp.edges[u, v]['weight'] = max(0, (1-max(lp[u, v], lp[v, u]))) * model._G.edges[u, v]['weight']
+                edge_lp_weight = 0
+                if (u, v) in lp:
+                    edge_lp_weight = lp[u, v]
+                if (v, u) in lp:
+                    edge_lp_weight = max(edge_lp_weight, lp[v, u])
+
+                model._Glp.edges[u, v]['weight'] = max(0, (1-edge_lp_weight)) * model._G.edges[u, v]['weight']
 
 
             tree_solution_edges, _ = TM_solver_groups_scipy(model._Glp, model._r, model._I.copy(), model._vertex_poi_vis)
@@ -215,30 +222,42 @@ def edges_from_model(gb_model, dir_edge_to_var, eps=1e-4):
     return dir_edge_list
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Run Gurobi Experiment")
-    parser.add_argument("--experiment", type=str, default="Drone1000",
-                        help="Name of the experiment to run (e.g., Crisp1000, Drone2000)")
+    # parser = argparse.ArgumentParser(description="Run Gurobi Experiment")
+    # parser.add_argument("--experiment", type=str, default="Drone1000",
+    #                     help="Name of the experiment to run (e.g., Crisp1000, Drone2000)")
+    #
+    # # Parse arguments
+    # args = parser.parse_args()
+    # Experiment = args.experiment
 
-    # Parse arguments
-    args = parser.parse_args()
-    Experiment = args.experiment
-
-    # ----- Simulated Instance -----
-    # G, I, S, vertex_poi_vis, root, meta = (
-    #     load_simulated_instance(f"{Experiment}"))
 
     # # ---- IRIS instance ----
-    vertex_file, edge_file, conf_file = ExperimentPicker.pick_exp(Experiment)
-    G, vertex_poi_vis = IRIS_reader.read_IRIS_to_inspection_graph(vertex_file, edge_file, conf_file)
-
-    I, S = IP_to_Group.vis_set_to_groups(vertex_poi_vis)
-    root = 0
+    # vertex_file, edge_file, conf_file = ExperimentPicker.pick_exp(Experiment)
+    # G, vertex_poi_vis = IRIS_reader.read_IRIS_to_inspection_graph(vertex_file, edge_file, conf_file)
+    #
+    # I, S = IP_to_Group.vis_set_to_groups(vertex_poi_vis)
+    # root = 0
 
     # ---- Load Simulated Experiment ----
+
+    Experiment = r"/home/adir/PycharmProjects/BridgeInspectionSimulator/inspection_experiments/gip_instance_N998_K500_bridge.pkl"
     # Experiment = "instance_300x300_POIs-500_N-1000"
     #
-    # G, I, S, vertex_poi_vis, root, meta = (
-    #     load_simulated_instance(f"/home/adir/Desktop/IP-results/simulated_experiments/{Experiment}.pkl"))
+    G, I, S, vertex_poi_vis, root, meta = (
+        SimInstanceIO.load_simulated_instance(f"{Experiment}"))
+        # SimInstanceIO.load_simulated_instance(f"/home/adir/Desktop/IP-results/simulated_experiments/{Experiment}.pkl"))
+
+    for k, v in vertex_poi_vis.items():
+        vertex_poi_vis[k] = set(v)
+
+    # Filter unseen POIs
+    unseen_poi = []
+    for p, l in S.items():
+        if len(l) == 0:
+            unseen_poi.append(p)
+
+    for p in unseen_poi: del S[p]
+    I = set(S.keys())
 
     # ---- Solver ----
     tour_edges = RunSolver(G, S, set(I), vertex_poi_vis, root, sure_edges=[])

@@ -1,6 +1,5 @@
 from GeoHelpers import *
 import math
-import random
 
 class Cspace:
     """

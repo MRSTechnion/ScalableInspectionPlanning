@@ -2,7 +2,7 @@ import argparse
 
 from GIP.heuristics import InspectionPostsolve
 from GIP.solver_utils import IP_to_Group
-from Utils.Readers import IRIS_reader, ExperimentPicker
+from Utils.Readers import IRIS_reader, ExperimentPicker, SimInstanceIO
 
 from gurobipy import Model, GRB, quicksum, GurobiError
 from GIP.heuristics.InspectionHeuristic import TM_solver_groups_scipy
@@ -41,26 +41,25 @@ def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name=''
 
     # --- Constraints ---
 
-    # 1. Routing Constraints (Same as before)
+    # 1. Routing Constraints
     m.addConstr(quicksum(y[(root, v)] for _, v in D.out_edges(root)) >= 1, name='root_outflow')
 
     for id, v_g in S.items():
         m.addConstr(quicksum(y[u, v] for u, v in D.in_edges(v_g)) >= 1, name=f'group_inflow_{id}')
 
     for i in D.nodes():
-        # Conservation of routing (Enter == Leave)
+        # Conservation of routing
         m.addConstr(quicksum(y[(u, v)] for u, v in D.in_edges(i)) ==
                     quicksum(y[(u, v)] for u, v in D.out_edges(i)), name=f'node_{i}_route_balance')
 
-    # 2. Flow Connectivity Constraints (New!)
-
+    # 2. Flow Connectivity Constraints
     for u, v in D_edges:
         m.addConstr(f[u, v] <= 2*(num_nodes - 1) * y[u, v], name=f'coupling_{u}_{v}')    # Longest tour - 2(n-1) (see lemma 2 in wafr24)
 
     # Flow Conservation:
     for i in D.nodes():
         if i == root:
-            continue  # Root is the source, we don't constrain its net flow (it supplies everything)
+            continue
 
         flow_in = quicksum(f[u, i] for u, _ in D.in_edges(i))
         flow_out = quicksum(f[i, v] for _, v in D.out_edges(i))
@@ -75,7 +74,7 @@ def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name=''
     # ---------------------------------------------------------
     m._G, m._D, m._S, m._r, m._I = G, D, S, root, I
     m._vertex_poi_vis = vertex_poi_vis
-    m._x = y  # Callback uses 'y' logic (binary vars)
+    m._x = y
     m._unc_groups = None
     m._heuristic_counter = 0
     m._Glp = G.copy()
@@ -96,9 +95,9 @@ def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name=''
     # ---------------------------------------------------------
 
     # m.Params.LazyConstraints = 1
-    m.optimize(cut_heuristic_callback)
+    # m.optimize(cut_heuristic_callback)
 
-    # m.optimize()
+    m.optimize()
 
     return edges_from_model(m, y)
 
@@ -229,31 +228,40 @@ def edges_from_model(gb_model, dir_edge_to_var, eps=1e-4):
     return dir_edge_list
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Run Gurobi Experiment")
-    parser.add_argument("--experiment", type=str, default="Drone2000",
-                        help="Name of the experiment to run (e.g., Crisp1000, Drone2000)")
-
-    # Parse arguments
-    args = parser.parse_args()
-    Experiment = args.experiment
-
-    # ----- Simulated Instance -----
-    # G, I, S, vertex_poi_vis, root, meta = (
-    #     load_simulated_instance(f"{Experiment}"))
-
+    # parser = argparse.ArgumentParser(description="Run Gurobi Experiment")
+    # parser.add_argument("--experiment", type=str, default="Drone2000",
+    #                     help="Name of the experiment to run (e.g., Crisp1000, Drone2000)")
     #
-    # ---- IRIS instance ----
-    vertex_file, edge_file, conf_file = ExperimentPicker.pick_exp(Experiment)
-    G, vertex_poi_vis = IRIS_reader.read_IRIS_to_inspection_graph(vertex_file, edge_file, conf_file)
+    # # Parse arguments
+    # args = parser.parse_args()
+    # Experiment = args.experiment
 
-    I, S = IP_to_Group.vis_set_to_groups(vertex_poi_vis)
-    root = 0
+    # ---- IRIS instance ----
+    # vertex_file, edge_file, conf_file = ExperimentPicker.pick_exp(Experiment)
+    # G, vertex_poi_vis = IRIS_reader.read_IRIS_to_inspection_graph(vertex_file, edge_file, conf_file)
+    #
+    # I, S = IP_to_Group.vis_set_to_groups(vertex_poi_vis)
+    # root = 0
 
     # ---- Load Simulated Experiment ----
+    Experiment = r"/home/adir/PycharmProjects/BridgeInspectionSimulator/inspection_experiments/gip_instance_N998_K500_bridge.pkl"
     # Experiment = "instance_300x300_POIs-500_N-1000"
-    # G, I, S, vertex_poi_vis, root, meta = (
-    #     load_simulated_instance(f"/home/adir/Desktop/IP-results/simulated_experiments/{Experiment}.pkl"))
+    #
+    G, I, S, vertex_poi_vis, root, meta = (
+        SimInstanceIO.load_simulated_instance(f"{Experiment}"))
+    # SimInstanceIO.load_simulated_instance(f"/home/adir/Desktop/IP-results/simulated_experiments/{Experiment}.pkl"))
 
+    for k, v in vertex_poi_vis.items():
+        vertex_poi_vis[k] = set(v)
+
+    # Filter unseen POIs
+    unseen_poi = []
+    for p, l in S.items():
+        if len(l) == 0:
+            unseen_poi.append(p)
+
+    for p in unseen_poi: del S[p]
+    I = set(S.keys())
     # ---- Solver ----
     tour_edges = RunSolver(G, S, set(I), vertex_poi_vis, root, sure_edges=[])
 
