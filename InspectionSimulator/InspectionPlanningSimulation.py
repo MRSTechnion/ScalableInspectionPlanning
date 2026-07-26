@@ -102,7 +102,7 @@ def sample_pois_on_mesh_surface(
 
     return POISet(pois=pois)
 
-
+# TODO - this is not considering occlusions.. very very basic, must be replaced.
 def compute_visibility_by_distance(
     graph: nx.Graph,
     poi_set: POISet,
@@ -379,8 +379,11 @@ def visualize_inspection_task(
     object_mesh: trimesh.Trimesh,
     poi_set: set,
     G,
-    poi_size: float = 30.0,
-    vertex_size: float = 8.0,
+    solution_edges=None,
+    show_graph_nodes=False,
+    show_graph_edges=False,
+    poi_size: float = 10.0,
+    vertex_size: float = 5.0,
     title: str = "",
 ) -> Tuple[plt.Figure, plt.Axes]:
     """
@@ -405,6 +408,7 @@ def visualize_inspection_task(
         edgecolor="gray",
     )
 
+
     poi_xyz = poi_set.as_array()
     ax.scatter(
         poi_xyz[:, 0],
@@ -412,34 +416,66 @@ def visualize_inspection_task(
         poi_xyz[:, 2],
         s=poi_size,
         alpha=0.9,
+        color='orange',
         label="POIs",
     )
 
-    selected_nodes = G.nodes()
-    xyz = np.asarray(selected_nodes, dtype=float)
-    ax.scatter(
-        xyz[:, 0],
-        xyz[:, 1],
-        xyz[:, 2],
-        s=vertex_size,
-        alpha=0.5,
-        label="Roadmap vertices",
-    )
+    if show_graph_nodes:
+        selected_nodes = G.nodes()
+        xyz = np.asarray(selected_nodes, dtype=float)
+        ax.scatter(
+            xyz[:, 0],
+            xyz[:, 1],
+            xyz[:, 2],
+            s=vertex_size,
+            alpha=0.5,
+            label="Roadmap vertices",
+        )
 
-    selected_edges = G.edges()
-    segments = [
+    if show_graph_edges:
+        selected_edges = G.edges()
+        segments = [
+            [np.asarray(u, dtype=float), np.asarray(v, dtype=float)]
+            for u, v in selected_edges
+        ]
+
+        edge_collection = Line3DCollection(
+            segments,
+            colors="gray",
+            linewidths=0.8,
+            alpha=0.4,
+            label="Roadmap edges",
+        )
+        ax.add_collection3d(edge_collection)
+
+
+    if solution_edges is not None:
+        segments_np = np.array(solution_edges)
+
+        # Extract start points (X, Y, Z)
+        starts = segments_np[:, 0, :]
+        X, Y, Z = starts[:, 0], starts[:, 1], starts[:, 2]
+
+        # Extract end points and calculate direction vectors (U, V, W)
+        ends = segments_np[:, 1, :]
+        vectors = ends - starts
+        U, V, W = vectors[:, 0], vectors[:, 1], vectors[:, 2]
+
+        # Plot using quiver
+        ax.quiver(
+            X, Y, Z,
+            U, V, W,
+            color="green",
+            linewidth=2,
+            alpha=1,
+            arrow_length_ratio=0.2,  # Controls the size of the arrowhead relative to the vector length
+            label="solution edges"
+        )
+
+    sol_segments = [
         [np.asarray(u, dtype=float), np.asarray(v, dtype=float)]
-        for u, v in selected_edges
+        for u, v in solution_edges
     ]
-
-    edge_collection = Line3DCollection(
-        segments,
-        colors="gray",
-        linewidths=0.8,
-        alpha=0.4,
-        label="Roadmap edges",
-    )
-    ax.add_collection3d(edge_collection)
 
     ax.set_xticklabels([])
     ax.set_yticklabels([])
