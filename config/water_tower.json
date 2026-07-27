@@ -1,0 +1,16 @@
+{
+  "obj_path": "./assets/OBJ/water_tower.obj",
+  "bounds": {
+    "xmin": -40,
+    "xmax": 40,
+    "ymin": -30,
+    "ymax": 30,
+    "zmin": 0,
+    "zmax": 70
+  },
+  "scale": [0.05, 0.05, 0.05],
+  "translation": [0, 0.25, 1.5],
+  "rotation": [1.57, 0, 0]
+}
+
+

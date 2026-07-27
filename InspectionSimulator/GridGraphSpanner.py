@@ -59,7 +59,23 @@ class ObstacleMesh:
     def aabb_max(self) -> np.ndarray:
         return self.mesh.bounds[1]
 
+@dataclass
+class InspectionObjectConfig:
+    obj_path: str
+    bounds: Bounds3D
+    scale: Tuple[float, float, float] = (1.0, 1.0, 1.0)
+    translation: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    rotation_rpy: Tuple[float, float, float] = (0.0, 0.0, 0.0)
 
+@dataclass
+class GridPlannerConfig:
+    robot_radius: float
+    grid_resolution: list[float]
+    connectivity: int = 6   # 6, 18, 26
+    edge_sample_num: int = 10
+
+
+# Legacy - both inspectionObject and GridPlanner configs
 @dataclass
 class PlannerConfig:
     obj_path: str
@@ -161,14 +177,15 @@ def sphere_collision_check(
 # Grid sampling
 # -----------------------------
 
-def sample_space_grid(bounds: Bounds3D, grid_resolution: float) -> np.ndarray:
+def sample_space_grid(bounds: Bounds3D, grid_resolution) -> np.ndarray:
     """Sample a regular 3D cubic grid over the workspace bounds."""
-    if grid_resolution <= 0:
-        raise ValueError("grid_resolution must be positive")
+    xs = np.linspace(bounds.xmin, bounds.xmax, int(grid_resolution[0]))
+    ys = np.linspace(bounds.ymin, bounds.ymax, int(grid_resolution[1]))
+    zs = np.linspace(bounds.zmin, bounds.zmax, int(grid_resolution[2]))
 
-    xs = np.arange(bounds.xmin, bounds.xmax + 0.5 * grid_resolution, grid_resolution)
-    ys = np.arange(bounds.ymin, bounds.ymax + 0.5 * grid_resolution, grid_resolution)
-    zs = np.arange(bounds.zmin, bounds.zmax + 0.5 * grid_resolution, grid_resolution)
+    # xs = np.arange(bounds.xmin, bounds.xmax + 0.5 * grid_resolution, grid_resolution)
+    # ys = np.arange(bounds.ymin, bounds.ymax + 0.5 * grid_resolution, grid_resolution)
+    # zs = np.arange(bounds.zmin, bounds.zmax + 0.5 * grid_resolution, grid_resolution)
 
     grid = np.array(list(product(xs, ys, zs)), dtype=float)
     return grid
@@ -213,8 +230,8 @@ def generate_neighbor_offsets(connectivity: int) -> List[Tuple[int, int, int]]:
     return offsets
 
 
-def point_to_grid_key(point: ArrayLike3, grid_resolution: float) -> Tuple[int, int, int]:
-    arr = np.asarray(point, dtype=float) / float(grid_resolution)
+def point_to_grid_key(point: ArrayLike3, grid_resolution) -> Tuple[int, int, int]:
+    arr = np.asarray(point, dtype=float) / np.asarray(grid_resolution, dtype=float)
     return tuple(np.round(arr).astype(int).tolist())
 
 
@@ -246,7 +263,7 @@ def connect_free_grid_points(
     radius: float,
     obstacle: ObstacleMesh,
     bounds: Bounds3D,
-    grid_resolution: float,
+    grid_resolution,
     connectivity: int,
     edge_sample_num: int,
 ) -> nx.Graph:
@@ -301,34 +318,29 @@ def connect_free_grid_points(
 # Pipeline manager
 # -----------------------------
 # @timing
-def build_grid_motion_planning_graph(config: PlannerConfig) -> PlanningArtifacts:
+def build_grid_motion_planning_graph(config, insp_object, env_bounds) -> PlanningArtifacts:
     """Run the full grid-based planning pipeline and return all artifacts."""
-    obstacle = load_object_env(
-        obj_path=config.obj_path,
-        scale=config.scale,
-        translation=config.translation,
-        rotation_rpy=config.rotation_rpy,
-    )
 
-    sampled_grid = sample_space_grid(config.bounds, config.grid_resolution)
+    sampled_grid = sample_space_grid(env_bounds, config.grid_resolution)
     free_grid = find_free_grid_points(
         sampled_grid=sampled_grid,
         radius=config.robot_radius,
-        obstacle=obstacle,
-        bounds=config.bounds,
+        obstacle=insp_object,
+        bounds=env_bounds,
     )
+
     graph = connect_free_grid_points(
         free_grid=free_grid,
         radius=config.robot_radius,
-        obstacle=obstacle,
-        bounds=config.bounds,
+        obstacle=insp_object,
+        bounds=env_bounds,
         grid_resolution=config.grid_resolution,
         connectivity=config.connectivity,
         edge_sample_num=config.edge_sample_num,
     )
 
     return PlanningArtifacts(
-        obstacle=obstacle,
+        obstacle=insp_object,
         sampled_grid=sampled_grid,
         free_grid=free_grid,
         graph=graph,

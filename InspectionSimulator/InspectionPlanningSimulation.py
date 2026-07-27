@@ -358,9 +358,9 @@ def visualize_inspection_instance(
                 alpha=0.35,
             )
 
-    ax.set_xticklabels([])
-    ax.set_yticklabels([])
-    ax.set_zticklabels([])
+    # ax.set_xticklabels([])
+    # ax.set_yticklabels([])
+    # ax.set_zticklabels([])
 
     ax.set_title(title)
     # ax.set_xlabel("X")
@@ -393,11 +393,12 @@ def visualize_inspection_task(
     - vertices are plotted using only xyz extracted from state[:3]
     - visibility edges are optional because they can be visually dense
     """
-    fig = plt.figure(figsize=(10, 8))
+    fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
 
     vertices = object_mesh.vertices
     faces = object_mesh.faces
+
     ax.plot_trisurf(
         vertices[:, 0],
         vertices[:, 1],
@@ -408,6 +409,12 @@ def visualize_inspection_task(
         edgecolor="gray",
     )
 
+    # Make x/y/z axes visually proportional
+    mins = vertices.min(axis=0)
+    maxs = vertices.max(axis=0)
+    ranges = maxs - mins
+
+    ax.set_box_aspect(ranges)
 
     poi_xyz = poi_set.as_array()
     ax.scatter(
@@ -472,20 +479,16 @@ def visualize_inspection_task(
             label="solution edges"
         )
 
-    sol_segments = [
-        [np.asarray(u, dtype=float), np.asarray(v, dtype=float)]
-        for u, v in solution_edges
-    ]
+    # ax.set_xticklabels([])
+    # ax.set_yticklabels([])
+    # ax.set_zticklabels([])
 
-    ax.set_xticklabels([])
-    ax.set_yticklabels([])
-    ax.set_zticklabels([])
 
     ax.set_title(title)
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
     ax.set_zlabel("Z")
-    _set_axes_equal(ax)
+    # _set_axes_equal(ax)
 
     handles, labels = ax.get_legend_handles_labels()
     if labels:

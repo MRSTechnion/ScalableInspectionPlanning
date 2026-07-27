@@ -9,10 +9,10 @@ import math
 # CONFIG
 # -----------------------------
 # OBJ_PATH = r"./OBJ/Bridge.obj"
-# OBJ_PATH = r"./OBJ/water_tower.obj"
-# OBJ_PATH = r"./OBJ/MEA3.obj"
+OBJ_PATH = r"../../assets/OBJ/water_tower.obj"
+# OBJ_PATH = r"../../assets/OBJ/MEA3.obj"
 # OBJ_PATH = r"./OBJ/menara_kl.obj"
-OBJ_PATH = r"./OBJ/tower_bridge_obj/tower_bridge.obj"
+# OBJ_PATH = r"./OBJ/tower_bridge_obj/tower_bridge.obj"
 
 
 USE_CONCAVE_COLLISION = True                     # useful for environment/static meshes
@@ -26,8 +26,8 @@ ORIENTATIONS = {
 }
 
 START_EULER = ORIENTATIONS[ORIENTATION]
-# MESH_SCALE = [0.05, 0.05, 0.05]
-MESH_SCALE = [0.0005, 0.0005, 0.0005]
+MESH_SCALE = [0.05, 0.05, 0.05]
+# MESH_SCALE = [0.0005, 0.0005, 0.0005]
 # MESH_SCALE = [1, 1, 1]
 START_POS = [0, 0, 0]
 

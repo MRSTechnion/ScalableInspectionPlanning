@@ -1,0 +1,16 @@
+{
+  "obj_path": "./assets/OBJ/MEA3.obj",
+  "bounds": {
+    "xmin": -20,
+    "xmax": 20,
+    "ymin": -20,
+    "ymax": 20,
+    "zmin": 0,
+    "zmax": 100
+  },
+  "scale": [0.05, 0.05, 0.05],
+  "translation": [0, 0, 0],
+  "rotation": [1.57, 0, 0]
+}
+
+
