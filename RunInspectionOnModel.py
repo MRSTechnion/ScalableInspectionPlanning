@@ -90,6 +90,8 @@ if __name__ == '__main__':
 
     uninspectable = [p for p in poi_to_vertices.keys() if len(poi_to_vertices[p]) == 0]
     I = set(poi_to_vertices.keys()).difference(uninspectable)
+    for u in uninspectable:
+        poi_to_vertices.pop(u)
     print(f"un-inspectable: {uninspectable}; Remained to inspect: {len(I)}")
 
     t3 = time.time()
