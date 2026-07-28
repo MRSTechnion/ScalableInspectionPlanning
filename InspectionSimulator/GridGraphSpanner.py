@@ -278,9 +278,11 @@ def connect_free_grid_points(
         point_to_grid_key(point, grid_resolution): point for point in free_grid
     }
 
+    point_to_idx = {}
     for idx, point in enumerate(free_grid):
         node = tuple(point.tolist())
-        graph.add_node(node, pos=node, index=idx)
+        graph.add_node(idx, pos=node)
+        point_to_idx[node] = idx
 
     for point in free_grid:
         point_key = point_to_grid_key(point, grid_resolution)
@@ -309,7 +311,7 @@ def connect_free_grid_points(
                 edge_sample_num=edge_sample_num,
             ):
                 weight = float(np.linalg.norm(neighbor_point - point))
-                graph.add_edge(node_u, node_v, weight=weight)
+                graph.add_edge(point_to_idx[node_u], point_to_idx[node_v], weight=weight)
 
     return graph
 

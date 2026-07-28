@@ -115,21 +115,12 @@ def compute_visibility_by_distance(
 
     Uses a KD-tree over graph vertex xyz for efficiency.
     """
-    if visibility_threshold < 0:
-        raise ValueError(f"visibility_threshold must be non-negative, got {visibility_threshold}")
 
     nodes = list(graph.nodes)
-    vertex_xyz = np.asarray(graph.nodes, dtype=float)
+    positions = list(nx.get_node_attributes(graph, "pos").values())
+    vertex_xyz = np.asarray(positions, dtype=float)
 
-    if not nodes:
-        return (
-            {poi.poi_id: [] for poi in poi_set.pois},
-            {},
-            {},
-        )
-
-    xyz_array = np.asarray(nodes, dtype=float)
-    tree = cKDTree(xyz_array)
+    tree = cKDTree(vertex_xyz)
 
     poi_to_vertices: Dict[POIId, List[VertexId]] = {poi.poi_id: [] for poi in poi_set.pois}
     vertex_to_pois: Dict[VertexId, List[POIId]] = {node: [] for node in nodes}
@@ -272,113 +263,114 @@ def _set_axes_equal(ax: plt.Axes) -> None:
     ax.set_zlim3d([z_middle - radius, z_middle + radius])
 
 
-def visualize_inspection_instance(
-    instance: InspectionPlanningInstance,
-    bridge_mesh: Optional[trimesh.Trimesh] = None,
-    show_bridge: bool = True,
-    show_vertices: bool = True,
-    show_pois: bool = True,
-    show_visibility: bool = False,
-    only_vertices_with_visibility: bool = False,
-    max_visibility_edges: Optional[int] = None,
-    vertex_size: float = 8.0,
-    poi_size: float = 30.0,
-    title: str = "",
-) -> Tuple[plt.Figure, plt.Axes]:
-    """
-    Lightweight 3D visualization.
-
-    Notes:
-    - vertices are plotted using only xyz extracted from state[:3]
-    - visibility edges are optional because they can be visually dense
-    """
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection="3d")
-
-    if show_bridge and bridge_mesh is not None:
-        vertices = bridge_mesh.vertices
-        faces = bridge_mesh.faces
-        ax.plot_trisurf(
-            vertices[:, 0],
-            vertices[:, 1],
-            faces,
-            vertices[:, 2],
-            alpha=0.15,
-            linewidth=0.2,
-            edgecolor="gray",
-        )
-
-    if show_vertices and instance.vertex_xyz:
-        if only_vertices_with_visibility:
-            selected_nodes = [
-                node for node, poi_ids in instance.vertex_to_pois.items()
-                if len(poi_ids) > 0
-            ]
-        else:
-            selected_nodes = list(instance.vertex_xyz.keys())
-
-        if selected_nodes:
-            xyz = np.asarray([instance.vertex_xyz[node] for node in selected_nodes], dtype=float)
-            ax.scatter(
-                xyz[:, 0],
-                xyz[:, 1],
-                xyz[:, 2],
-                s=vertex_size,
-                alpha=0.5,
-                label="Roadmap vertices",
-            )
-
-    if show_pois and instance.poi_set.pois:
-        poi_xyz = instance.poi_set.as_array()
-        ax.scatter(
-            poi_xyz[:, 0],
-            poi_xyz[:, 1],
-            poi_xyz[:, 2],
-            s=poi_size,
-            alpha=0.9,
-            label="POIs",
-        )
-
-    if show_visibility and instance.poi_set.pois:
-        visibility_segments: List[Tuple[np.ndarray, np.ndarray]] = []
-        for poi in instance.poi_set.pois:
-            for node in instance.poi_to_vertices.get(poi.poi_id, []):
-                visibility_segments.append((poi.xyz, instance.vertex_xyz[node]))
-
-        if max_visibility_edges is not None:
-            visibility_segments = visibility_segments[:max_visibility_edges]
-
-        for poi_xyz, vertex_xyz in visibility_segments:
-            ax.plot(
-                [poi_xyz[0], vertex_xyz[0]],
-                [poi_xyz[1], vertex_xyz[1]],
-                [poi_xyz[2], vertex_xyz[2]],
-                linestyle="--",
-                linewidth=0.6,
-                alpha=0.35,
-            )
-
-    # ax.set_xticklabels([])
-    # ax.set_yticklabels([])
-    # ax.set_zticklabels([])
-
-    ax.set_title(title)
-    # ax.set_xlabel("X")
-    # ax.set_ylabel("Y")
-    # ax.set_zlabel("Z")
-    _set_axes_equal(ax)
-
-    handles, labels = ax.get_legend_handles_labels()
-    if labels:
-        ax.legend()
-
-    plt.tight_layout()
-    return fig, ax
+# def visualize_inspection_instance(
+#     instance: InspectionPlanningInstance,
+#     bridge_mesh: Optional[trimesh.Trimesh] = None,
+#     show_bridge: bool = True,
+#     show_vertices: bool = True,
+#     show_pois: bool = True,
+#     show_visibility: bool = False,
+#     only_vertices_with_visibility: bool = False,
+#     max_visibility_edges: Optional[int] = None,
+#     vertex_size: float = 8.0,
+#     poi_size: float = 30.0,
+#     title: str = "",
+# ) -> Tuple[plt.Figure, plt.Axes]:
+#     """
+#     Lightweight 3D visualization.
+#
+#     Notes:
+#     - vertices are plotted using only xyz extracted from state[:3]
+#     - visibility edges are optional because they can be visually dense
+#     """
+#     fig = plt.figure(figsize=(10, 8))
+#     ax = fig.add_subplot(111, projection="3d")
+#
+#     if show_bridge and bridge_mesh is not None:
+#         vertices = bridge_mesh.vertices
+#         faces = bridge_mesh.faces
+#         ax.plot_trisurf(
+#             vertices[:, 0],
+#             vertices[:, 1],
+#             faces,
+#             vertices[:, 2],
+#             alpha=0.15,
+#             linewidth=0.2,
+#             edgecolor="gray",
+#         )
+#
+#     if show_vertices and instance.vertex_xyz:
+#         if only_vertices_with_visibility:
+#             selected_nodes = [
+#                 node for node, poi_ids in instance.vertex_to_pois.items()
+#                 if len(poi_ids) > 0
+#             ]
+#         else:
+#             selected_nodes = list(instance.vertex_xyz.keys())
+#
+#         if selected_nodes:
+#             xyz = np.asarray([instance.vertex_xyz[node] for node in selected_nodes], dtype=float)
+#             ax.scatter(
+#                 xyz[:, 0],
+#                 xyz[:, 1],
+#                 xyz[:, 2],
+#                 s=vertex_size,
+#                 alpha=0.5,
+#                 label="Roadmap vertices",
+#             )
+#
+#     if show_pois and instance.poi_set.pois:
+#         poi_xyz = instance.poi_set.as_array()
+#         ax.scatter(
+#             poi_xyz[:, 0],
+#             poi_xyz[:, 1],
+#             poi_xyz[:, 2],
+#             s=poi_size,
+#             alpha=0.9,
+#             label="POIs",
+#         )
+#
+#     if show_visibility and instance.poi_set.pois:
+#         visibility_segments: List[Tuple[np.ndarray, np.ndarray]] = []
+#         for poi in instance.poi_set.pois:
+#             for node in instance.poi_to_vertices.get(poi.poi_id, []):
+#                 visibility_segments.append((poi.xyz, instance.vertex_xyz[node]))
+#
+#         if max_visibility_edges is not None:
+#             visibility_segments = visibility_segments[:max_visibility_edges]
+#
+#         for poi_xyz, vertex_xyz in visibility_segments:
+#             ax.plot(
+#                 [poi_xyz[0], vertex_xyz[0]],
+#                 [poi_xyz[1], vertex_xyz[1]],
+#                 [poi_xyz[2], vertex_xyz[2]],
+#                 linestyle="--",
+#                 linewidth=0.6,
+#                 alpha=0.35,
+#             )
+#
+#     # ax.set_xticklabels([])
+#     # ax.set_yticklabels([])
+#     # ax.set_zticklabels([])
+#
+#     ax.set_title(title)
+#     # ax.set_xlabel("X")
+#     # ax.set_ylabel("Y")
+#     # ax.set_zlabel("Z")
+#     _set_axes_equal(ax)
+#
+#     handles, labels = ax.get_legend_handles_labels()
+#     if labels:
+#         ax.legend()
+#
+#     plt.tight_layout()
+#     return fig, ax
 
 def visualize_inspection_task(
     object_mesh: trimesh.Trimesh,
     poi_set: set,
     G,
+    start_node=None,
     solution_edges=None,
     show_graph_nodes=False,
     show_graph_edges=False,
@@ -428,8 +420,9 @@ def visualize_inspection_task(
     )
 
     if show_graph_nodes:
-        selected_nodes = G.nodes()
-        xyz = np.asarray(selected_nodes, dtype=float)
+        positions = list(nx.get_node_attributes(G, "pos").values())
+        xyz = np.asarray(positions, dtype=float)
+
         ax.scatter(
             xyz[:, 0],
             xyz[:, 1],
@@ -440,10 +433,10 @@ def visualize_inspection_task(
         )
 
     if show_graph_edges:
-        selected_edges = G.edges()
+        positions = list(nx.get_node_attributes(G, "pos").values())
         segments = [
-            [np.asarray(u, dtype=float), np.asarray(v, dtype=float)]
-            for u, v in selected_edges
+            [np.asarray(positions[u], dtype=float), np.asarray(positions[v], dtype=float)]
+            for u, v in G.edges
         ]
 
         edge_collection = Line3DCollection(
@@ -455,9 +448,14 @@ def visualize_inspection_task(
         )
         ax.add_collection3d(edge_collection)
 
-
     if solution_edges is not None:
-        segments_np = np.array(solution_edges)
+        positions = list(nx.get_node_attributes(G, "pos").values())
+        segments = [
+            [np.asarray(positions[u], dtype=float), np.asarray(positions[v], dtype=float)]
+            for u, v in solution_edges
+        ]
+
+        segments_np = np.array(segments)
 
         # Extract start points (X, Y, Z)
         starts = segments_np[:, 0, :]

@@ -101,7 +101,7 @@ if __name__ == '__main__':
 
     print("--- Solving GIP problem ---")
 
-    root = list(G.nodes())[0]
+    root = 0
     timeout = 10
 
     solver = solver_entry['SCF']
@@ -109,7 +109,7 @@ if __name__ == '__main__':
                             TimeLim=timeout, out_path='')
     print(tour_edges)
 
-    visualize_inspection_task(object_mesh, poi_set, G, solution_edges=tour_edges)
+    visualize_inspection_task(object_mesh, poi_set, G, start_node=root, solution_edges=tour_edges)
     plt.show()
 
     pass
