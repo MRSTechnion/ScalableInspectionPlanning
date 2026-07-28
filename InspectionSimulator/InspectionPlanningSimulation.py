@@ -448,6 +448,21 @@ def visualize_inspection_task(
         )
         ax.add_collection3d(edge_collection)
 
+    if start_node is not None:
+        start_pos = G.nodes[start_node]['pos']
+        xyz = np.asarray(start_pos, dtype=float)
+
+        ax.scatter(
+            xyz[0],
+            xyz[1],
+            xyz[2],
+            s=vertex_size*3,
+            alpha=1,
+            label="Start vertex",
+            marker='x',
+            color='red'
+        )
+
     if solution_edges is not None:
         positions = list(nx.get_node_attributes(G, "pos").values())
         segments = [
