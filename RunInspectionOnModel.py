@@ -11,7 +11,9 @@ from InspectionSimulator.InspectionPlanningSimulation import (
     sample_pois_on_mesh_surface,
     build_grid_motion_planning_graph,
     compute_visibility_by_distance,
-    visualize_inspection_task
+    visualize_inspection_task,
+    visualize_inspection_task_pybullet,
+    run_pybullet_viewer
 )
 
 from GIP import heuristics
@@ -48,14 +50,14 @@ def inspection_obj_config(obj_config_file) -> InspectionObjectConfig:
 
 def planner_config() -> GridPlannerConfig:
     return GridPlannerConfig(
-        robot_radius=5,
+        robot_radius=0.1,
         grid_resolution= np.asarray([10, 10, 10], dtype=float),
         connectivity=6,
         edge_sample_num=3
     )
 
 if __name__ == '__main__':
-    obj_config = inspection_obj_config(r'./config/water_tower.json')
+    obj_config = inspection_obj_config(r'./config/bridge.json')
     planner_config = planner_config()
 
     t0 = time.time()
@@ -96,6 +98,20 @@ if __name__ == '__main__':
 
     t3 = time.time()
     print(f"Took: {t3 - t2} seconds")
+
+    client_id, mesh_body = visualize_inspection_task_pybullet(
+        object_mesh=object_mesh,
+        poi_set=poi_set,
+        G=G,
+        start_node=None,
+        solution_edges=None,
+        show_graph_nodes=True,
+        show_graph_edges=True
+    )
+
+    run_pybullet_viewer(client_id)
+
+
     # visualize_inspection_task(object_mesh, poi_set, G, show_graph_edges=True, show_graph_nodes=True)
     # plt.show()
 
@@ -104,7 +120,7 @@ if __name__ == '__main__':
     root = 0
     timeout = 10
 
-    solver = solver_entry['SCF']
+    solver = solver_entry['GroupCutset']
     tour_edges = solver(G, poi_to_vertices, I, vertex_to_pois, root, sure_edges=[], Experiment_name='water_tower_100',
                             TimeLim=timeout, out_path='')
     print(tour_edges)

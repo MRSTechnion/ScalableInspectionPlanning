@@ -12,6 +12,13 @@ import math
 import trimesh
 from scipy.spatial import cKDTree
 
+import time
+from typing import Optional
+
+import pybullet as p
+import pybullet_data
+import trimesh
+
 from InspectionSimulator.GridGraphSpanner import (
     load_object_env, Bounds3D, PlannerConfig, build_grid_motion_planning_graph)
 
@@ -509,6 +516,343 @@ def visualize_inspection_task(
 
     plt.tight_layout()
     return fig, ax
+
+
+
+def visualize_inspection_task_pybullet(
+    object_mesh,
+    poi_set,
+    G,
+    start_node=None,
+    solution_edges=None,
+    show_graph_nodes=False,
+    show_graph_edges=False,
+    poi_size: float = 6.0,
+    vertex_size: float = 4,
+    mesh_color=(0.72, 0.75, 0.78, 1.0),
+    edge_color=(0.25, 0.35, 0.50),
+    solution_color=(0.05, 0.8, 0.2),
+):
+    """
+    Display an inspection task in an interactive PyBullet GUI.
+
+    Returns
+    -------
+    client_id:
+        PyBullet physics client ID.
+
+    Notes
+    -----
+    - This function opens the window but does not block.
+    - Call run_pybullet_viewer(client_id) afterward to keep it open.
+    - The graph node positions are read from G.nodes[node]["pos"].
+    """
+    client_id = p.connect(p.GUI)
+
+    p.setAdditionalSearchPath(
+        pybullet_data.getDataPath(),
+        physicsClientId=client_id,
+    )
+
+    p.configureDebugVisualizer(
+        p.COV_ENABLE_GUI,
+        0,
+        physicsClientId=client_id,
+    )
+
+    p.configureDebugVisualizer(
+        p.COV_ENABLE_SHADOWS,
+        1,
+        physicsClientId=client_id,
+    )
+
+    p.configureDebugVisualizer(
+        p.COV_ENABLE_RGB_BUFFER_PREVIEW,
+        0,
+        physicsClientId=client_id,
+    )
+    p.configureDebugVisualizer(
+        p.COV_ENABLE_DEPTH_BUFFER_PREVIEW,
+        0,
+        physicsClientId=client_id,
+    )
+    p.configureDebugVisualizer(
+        p.COV_ENABLE_SEGMENTATION_MARK_PREVIEW,
+        0,
+        physicsClientId=client_id,
+    )
+
+    # Background color is supported in recent PyBullet versions.
+    # try:
+    #     p.configureDebugVisualizer(
+    #         p.COV_ENABLE_GUI,
+    #         0,
+    #         lightPosition=[1, 1, 3],
+    #         rgbBackground=background_color,
+    #         physicsClientId=client_id,
+    #     )
+    # except TypeError:
+    #     pass
+
+    # ---------------------------------------------------------
+    # Mesh
+    # ---------------------------------------------------------
+
+    mesh_vertices = np.asarray(object_mesh.vertices, dtype=float)
+    mesh_faces = np.asarray(object_mesh.faces, dtype=np.int32)
+
+    mins = mesh_vertices.min(axis=0)
+    maxs = mesh_vertices.max(axis=0)
+
+    plane_id = p.loadURDF(
+        "plane.urdf",
+        basePosition=[0, 0, float(mins[2]) - 0.02],
+        useFixedBase=True,
+        physicsClientId=client_id,
+    )
+
+    visual_shape = p.createVisualShape(
+        shapeType=p.GEOM_MESH,
+        vertices=mesh_vertices.tolist(),
+        indices=mesh_faces.reshape(-1).tolist(),
+        rgbaColor=[0.65, 0.65, 0.65, 1.0],
+        specularColor=[0.2, 0.2, 0.2],
+        physicsClientId=client_id,
+    )
+
+    mesh_body = p.createMultiBody(
+        baseMass=0,
+        baseVisualShapeIndex=visual_shape,
+        basePosition=[0, 0, 0],
+        physicsClientId=client_id,
+    )
+
+    p.changeVisualShape(
+        mesh_body,
+        -1,
+        rgbaColor=list(mesh_color),
+        specularColor=[0.05, 0.05, 0.05],
+        physicsClientId=client_id,
+    )
+
+    # ---------------------------------------------------------
+    # Graph positions
+    # ---------------------------------------------------------
+
+    positions = {
+        node: np.asarray(pos, dtype=float)[:3]
+        for node, pos in nx.get_node_attributes(G, "pos").items()
+    }
+
+    missing_positions = set(G.nodes) - set(positions)
+
+    if missing_positions:
+        raise ValueError(
+            f"{len(missing_positions)} graph nodes have no 'pos' attribute. "
+            f"Examples: {list(missing_positions)[:5]}"
+        )
+
+    # ---------------------------------------------------------
+    # POIs
+    # ---------------------------------------------------------
+
+    poi_xyz = np.asarray(poi_set.as_array(), dtype=float)
+
+    if len(poi_xyz) > 0:
+        p.addUserDebugPoints(
+            pointPositions=poi_xyz[:, :3].tolist(),
+            pointColorsRGB=[[1.0, 0.5, 0.0]] * len(poi_xyz),
+            pointSize=poi_size,
+            physicsClientId=client_id,
+        )
+
+    # ---------------------------------------------------------
+    # Roadmap vertices
+    # ---------------------------------------------------------
+    if show_graph_nodes and positions:
+        graph_xyz = np.asarray(list(positions.values()))
+
+        p.addUserDebugPoints(
+            pointPositions=graph_xyz.tolist(),
+            pointColorsRGB=[[0.0, 0.9, 0.0]] * len(graph_xyz),
+            pointSize=vertex_size,
+            physicsClientId=client_id,
+        )
+
+    # ---------------------------------------------------------
+    # Roadmap edges
+    # ---------------------------------------------------------
+
+    if show_graph_edges:
+        for u, v in G.edges:
+            p.addUserDebugLine(
+                positions[u].tolist(),
+                positions[v].tolist(),
+                lineColorRGB=[0.0, 0.65, 0.0],
+                lineWidth=1.0,
+                physicsClientId=client_id,
+            )
+    # ---------------------------------------------------------
+    # Start vertex
+    # ---------------------------------------------------------
+
+    if start_node is not None:
+        if start_node not in positions:
+            raise ValueError(
+                f"Start node {start_node!r} has no 'pos' attribute."
+            )
+
+        p.addUserDebugPoints(
+            pointPositions=[positions[start_node].tolist()],
+            pointColorsRGB=[[1.0, 0.0, 0.0]],
+            pointSize=vertex_size * 3,
+            physicsClientId=client_id,
+        )
+
+        # PyBullet debug points have no marker types, so add a 3D cross.
+        _add_debug_cross(
+            positions[start_node],
+            size=_scene_scale(mesh_vertices) * 0.015,
+            color=(1.0, 0.0, 0.0),
+            line_width=3.0,
+            client_id=client_id,
+        )
+
+    # ---------------------------------------------------------
+    # Directed solution edges
+    # ---------------------------------------------------------
+
+    if solution_edges is not None:
+        solution_edges = list(solution_edges)
+
+        arrow_size = _scene_scale(mesh_vertices) * 0.02
+
+        for u, v in solution_edges:
+            _add_debug_arrow(
+                start=positions[u],
+                end=positions[v],
+                color=solution_color,
+                line_width=3.0,
+                arrow_size=arrow_size,
+                client_id=client_id,
+            )
+
+    # ---------------------------------------------------------
+    # Camera
+    # ---------------------------------------------------------
+
+    center = 0.5 * (mins + maxs)
+    largest_extent = float(np.max(maxs - mins))
+
+    p.resetDebugVisualizerCamera(
+        cameraDistance=1.15 * largest_extent,
+        cameraYaw=35,
+        cameraPitch=-12,
+        cameraTargetPosition=center.tolist(),
+        physicsClientId=client_id,
+    )
+
+    return client_id, mesh_body
+
+
+def _scene_scale(vertices):
+    """Return a representative length scale for the scene."""
+    ranges = np.ptp(vertices, axis=0)
+    return max(float(np.linalg.norm(ranges)), 1e-6)
+
+
+def _add_debug_cross(
+    position,
+    size,
+    color,
+    line_width,
+    client_id,
+):
+    """Draw a small 3D cross centered at position."""
+    position = np.asarray(position, dtype=float)
+
+    for axis in np.eye(3):
+        p.addUserDebugLine(
+            (position - size * axis).tolist(),
+            (position + size * axis).tolist(),
+            lineColorRGB=list(color),
+            lineWidth=line_width,
+            physicsClientId=client_id,
+        )
+
+
+def _add_debug_arrow(
+    start,
+    end,
+    color,
+    line_width,
+    arrow_size,
+    client_id,
+):
+    """Draw a line with a 3D arrowhead."""
+    start = np.asarray(start, dtype=float)
+    end = np.asarray(end, dtype=float)
+
+    direction = end - start
+    length = np.linalg.norm(direction)
+
+    if length < 1e-12:
+        return
+
+    direction /= length
+
+    p.addUserDebugLine(
+        start.tolist(),
+        end.tolist(),
+        lineColorRGB=list(color),
+        lineWidth=line_width,
+        physicsClientId=client_id,
+    )
+
+    # Choose a reference vector that is not parallel to the arrow.
+    reference = np.array([0.0, 0.0, 1.0])
+
+    if abs(np.dot(direction, reference)) > 0.9:
+        reference = np.array([0.0, 1.0, 0.0])
+
+    perpendicular = np.cross(direction, reference)
+    perpendicular /= np.linalg.norm(perpendicular)
+
+    arrow_size = min(arrow_size, 0.25 * length)
+    arrow_base = end - arrow_size * direction
+    arrow_width = 0.5 * arrow_size
+
+    head_1 = arrow_base + arrow_width * perpendicular
+    head_2 = arrow_base - arrow_width * perpendicular
+
+    p.addUserDebugLine(
+        end.tolist(),
+        head_1.tolist(),
+        lineColorRGB=list(color),
+        lineWidth=line_width,
+        physicsClientId=client_id,
+    )
+
+    p.addUserDebugLine(
+        end.tolist(),
+        head_2.tolist(),
+        lineColorRGB=list(color),
+        lineWidth=line_width,
+        physicsClientId=client_id,
+    )
+
+
+def run_pybullet_viewer(client_id):
+    """Keep the PyBullet viewer responsive until its window is closed."""
+    try:
+        while p.isConnected(client_id):
+            p.stepSimulation(physicsClientId=client_id)
+            time.sleep(1.0 / 120.0)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if p.isConnected(client_id):
+            p.disconnect(client_id)
 
 def env_config() -> PlannerConfig:
     """Small example config; tune this to your bridge model placement."""

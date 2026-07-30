@@ -230,10 +230,16 @@ def generate_neighbor_offsets(connectivity: int) -> List[Tuple[int, int, int]]:
     return offsets
 
 
-def point_to_grid_key(point: ArrayLike3, grid_resolution) -> Tuple[int, int, int]:
-    arr = np.asarray(point, dtype=float) / np.asarray(grid_resolution, dtype=float)
-    return tuple(np.round(arr).astype(int).tolist())
+def point_to_grid_key(point, grid_origin, grid_step):
+    point = np.asarray(point, dtype=float)
+    grid_origin = np.asarray(grid_origin, dtype=float)
+    grid_step = np.asarray(grid_step, dtype=float)
 
+    return tuple(
+        np.rint((point - grid_origin) / grid_step)
+        .astype(int)
+        .tolist()
+    )
 
 def is_local_path_collision_free(
     start: ArrayLike3,
@@ -244,8 +250,6 @@ def is_local_path_collision_free(
     edge_sample_num: int,
 ) -> bool:
     """Check straight-line local motion between two free nodes."""
-    if edge_sample_num < 2:
-        edge_sample_num = 2
 
     start = np.asarray(start, dtype=float)
     goal = np.asarray(goal, dtype=float)
@@ -264,19 +268,25 @@ def connect_free_grid_points(
     obstacle: ObstacleMesh,
     bounds: Bounds3D,
     grid_resolution,
+    grid_step,
     connectivity: int,
     edge_sample_num: int,
 ) -> nx.Graph:
     """Create an undirected graph over free grid points with valid local edges."""
     graph = nx.Graph()
 
-    if len(free_grid) == 0:
-        return graph
-
     neighbor_offsets = generate_neighbor_offsets(connectivity)
-    key_to_point: Dict[Tuple[int, int, int], np.ndarray] = {
-        point_to_grid_key(point, grid_resolution): point for point in free_grid
+
+    grid_origin = np.array(
+        [bounds.xmin, bounds.ymin, bounds.zmin],
+        dtype=float,
+    )
+
+    key_to_point = {
+        point_to_grid_key(point, grid_origin, grid_step): point
+        for point in free_grid
     }
+
 
     point_to_idx = {}
     for idx, point in enumerate(free_grid):
@@ -285,7 +295,7 @@ def connect_free_grid_points(
         point_to_idx[node] = idx
 
     for point in free_grid:
-        point_key = point_to_grid_key(point, grid_resolution)
+        point_key = point_to_grid_key(point, grid_origin, grid_step)
         node_u = tuple(point.tolist())
 
         for offset in neighbor_offsets:
@@ -299,7 +309,10 @@ def connect_free_grid_points(
                 continue
 
             node_v = tuple(neighbor_point.tolist())
-            if graph.has_edge(node_u, node_v) or node_u == node_v:
+            u = point_to_idx[tuple(point.tolist())]
+            v = point_to_idx[tuple(neighbor_point.tolist())]
+
+            if u == v or graph.has_edge(u, v):
                 continue
 
             if is_local_path_collision_free(
@@ -324,6 +337,12 @@ def build_grid_motion_planning_graph(config, insp_object, env_bounds) -> Plannin
     """Run the full grid-based planning pipeline and return all artifacts."""
 
     sampled_grid = sample_space_grid(env_bounds, config.grid_resolution)
+
+    grid_step = np.zeros_like(config.grid_resolution)
+    for i in range(len(grid_step)):
+        grid_values = np.unique(sampled_grid[:,i])
+        grid_step[i] = grid_values[1]-grid_values[0]
+
     free_grid = find_free_grid_points(
         sampled_grid=sampled_grid,
         radius=config.robot_radius,
@@ -337,6 +356,7 @@ def build_grid_motion_planning_graph(config, insp_object, env_bounds) -> Plannin
         obstacle=insp_object,
         bounds=env_bounds,
         grid_resolution=config.grid_resolution,
+        grid_step=grid_step,
         connectivity=config.connectivity,
         edge_sample_num=config.edge_sample_num,
     )
