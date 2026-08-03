@@ -142,6 +142,92 @@ def compute_visibility_by_distance(
 
     return poi_to_vertices, vertex_to_pois, vertex_xyz
 
+def compute_visibility(
+    graph: nx.Graph,
+    poi_set: POISet,
+    object_mesh: trimesh.Trimesh,
+    visibility_threshold: float,
+    occlusion_tolerance: float = 1e-5,
+):
+    nodes = list(graph.nodes)
+
+    # Preserve correspondence between nodes and positions explicitly.
+    vertex_xyz = np.asarray(
+        [graph.nodes[node]["pos"] for node in nodes],
+        dtype=float,
+    )
+
+    tree = cKDTree(vertex_xyz)
+
+    poi_to_vertices = {
+        poi.poi_id: set()
+        for poi in poi_set.pois
+    }
+    vertex_to_pois = {
+        node: set()
+        for node in nodes
+    }
+
+    for poi in poi_set.pois:
+        # Broad phase: vertices close enough to inspect the POI.
+        candidate_indices = tree.query_ball_point(
+            poi.xyz,
+            r=visibility_threshold,
+        )
+
+        if not candidate_indices:
+            continue
+
+        origins = vertex_xyz[candidate_indices]
+        vectors = poi.xyz[None, :] - origins
+        target_distances = np.linalg.norm(vectors, axis=1)
+
+        valid = target_distances > occlusion_tolerance    # Too close for our tolerance - we throw it away
+        directions = np.zeros_like(vectors)
+        directions[valid] = (
+            vectors[valid] / target_distances[valid, None]
+        )
+
+        # Find the first mesh intersection along every ray.
+        triangle_ids, ray_ids, hit_locations = (
+            object_mesh.ray.intersects_id(
+                ray_origins=origins[valid],
+                ray_directions=directions[valid],
+                multiple_hits=False,
+                return_locations=True,
+            )
+        )
+
+        # Rays without an early intersection are initially considered clear.
+        clear = np.ones(np.count_nonzero(valid), dtype=bool)
+
+        hit_distances = np.linalg.norm(
+            hit_locations - origins[valid][ray_ids],
+            axis=1,
+        )
+
+        # The POI itself lies on the mesh and should produce an intersection.
+        # Only intersections strictly before the POI represent occlusion.
+        clear[ray_ids] = (
+            hit_distances
+            >= target_distances[valid][ray_ids] - occlusion_tolerance
+        )
+
+        valid_candidate_indices = np.asarray(candidate_indices)[valid]
+
+        for candidate_idx, line_is_clear in zip(
+            valid_candidate_indices,
+            clear,
+        ):
+            if not line_is_clear:
+                continue
+
+            node = nodes[candidate_idx]
+            poi_to_vertices[poi.poi_id].add(node)
+            vertex_to_pois[node].add(poi.poi_id)
+
+    return poi_to_vertices, vertex_to_pois, vertex_xyz
+
 def build_inspection_planning_instance(
     graph: nx.Graph,
     bridge_mesh: trimesh.Trimesh,
@@ -525,8 +611,11 @@ def visualize_inspection_task_pybullet(
     G,
     start_node=None,
     solution_edges=None,
+    visibility_vertex=None,
+    vertex_to_pois=None,
     show_graph_nodes=False,
     show_graph_edges=False,
+    show_solution_visibility=False,
     poi_size: float = 6.0,
     vertex_size: float = 4,
     mesh_color=(0.72, 0.75, 0.78, 1.0),
@@ -546,6 +635,8 @@ def visualize_inspection_task_pybullet(
     - This function opens the window but does not block.
     - Call run_pybullet_viewer(client_id) afterward to keep it open.
     - The graph node positions are read from G.nodes[node]["pos"].
+    - If visibility_vertex is supplied, it is highlighted and lines are drawn
+      to the POIs listed for it in vertex_to_pois.
     """
     client_id = p.connect(p.GUI)
 
@@ -688,10 +779,47 @@ def visualize_inspection_task_pybullet(
             p.addUserDebugLine(
                 positions[u].tolist(),
                 positions[v].tolist(),
-                lineColorRGB=[0.0, 0.65, 0.0],
+                lineColorRGB=[0.0, 0.1, 0.6],
                 lineWidth=1.0,
                 physicsClientId=client_id,
             )
+
+    # ---------------------------------------------------------
+    # Visibility from a selected roadmap vertex
+    # ---------------------------------------------------------
+
+    if visibility_vertex is not None or show_solution_visibility:
+
+        if visibility_vertex is not None:
+            vertices_to_show = [visibility_vertex]
+        else:
+            solution_vertices = set()
+            for u, v in solution_edges:
+                solution_vertices.add(u)
+                solution_vertices.add(v)
+            vertices_to_show = solution_vertices
+
+        poi_positions = poi_set.as_dict()
+
+        for v in vertices_to_show:
+            visibility_pos = positions[v]
+            p.addUserDebugPoints(
+                pointPositions=[visibility_pos.tolist()],
+                pointColorsRGB=[[0.0, 0.2, 1.0]],
+                pointSize=vertex_size * 3,
+                physicsClientId=client_id,
+            )
+
+            visible_poi_ids = vertex_to_pois.get(v, [])
+            for poi_id in visible_poi_ids:
+                p.addUserDebugLine(
+                    lineFromXYZ=visibility_pos.tolist(),
+                    lineToXYZ=np.asarray(poi_positions[poi_id], dtype=float).tolist(),
+                    lineColorRGB=[0.0, 0.75, 1.0],
+                    lineWidth=2.0,
+                    physicsClientId=client_id,
+                )
+
     # ---------------------------------------------------------
     # Start vertex
     # ---------------------------------------------------------
@@ -754,6 +882,92 @@ def visualize_inspection_task_pybullet(
 
     return client_id, mesh_body
 
+
+def _scene_scale(vertices):
+    """Return a representative length scale for the scene."""
+    ranges = np.ptp(vertices, axis=0)
+    return max(float(np.linalg.norm(ranges)), 1e-6)
+
+
+def _add_debug_cross(
+    position,
+    size,
+    color,
+    line_width,
+    client_id,
+):
+    """Draw a small 3D cross centered at position."""
+    position = np.asarray(position, dtype=float)
+
+    for axis in np.eye(3):
+        p.addUserDebugLine(
+            (position - size * axis).tolist(),
+            (position + size * axis).tolist(),
+            lineColorRGB=list(color),
+            lineWidth=line_width,
+            physicsClientId=client_id,
+        )
+
+
+def _add_debug_arrow(
+    start,
+    end,
+    color,
+    line_width,
+    arrow_size,
+    client_id,
+):
+    """Draw a line with a 3D arrowhead."""
+    start = np.asarray(start, dtype=float)
+    end = np.asarray(end, dtype=float)
+
+    direction = end - start
+    length = np.linalg.norm(direction)
+
+    if length < 1e-12:
+        return
+
+    direction /= length
+
+    p.addUserDebugLine(
+        start.tolist(),
+        end.tolist(),
+        lineColorRGB=list(color),
+        lineWidth=line_width,
+        physicsClientId=client_id,
+    )
+
+    # Choose a reference vector that is not parallel to the arrow.
+    reference = np.array([0.0, 0.0, 1.0])
+
+    if abs(np.dot(direction, reference)) > 0.9:
+        reference = np.array([0.0, 1.0, 0.0])
+
+    perpendicular = np.cross(direction, reference)
+    perpendicular /= np.linalg.norm(perpendicular)
+
+    arrow_size = min(arrow_size, 0.25 * length)
+    arrow_base = end - arrow_size * direction
+    arrow_width = 0.5 * arrow_size
+
+    head_1 = arrow_base + arrow_width * perpendicular
+    head_2 = arrow_base - arrow_width * perpendicular
+
+    p.addUserDebugLine(
+        end.tolist(),
+        head_1.tolist(),
+        lineColorRGB=list(color),
+        lineWidth=line_width,
+        physicsClientId=client_id,
+    )
+
+    p.addUserDebugLine(
+        end.tolist(),
+        head_2.tolist(),
+        lineColorRGB=list(color),
+        lineWidth=line_width,
+        physicsClientId=client_id,
+    )
 
 def _scene_scale(vertices):
     """Return a representative length scale for the scene."""
