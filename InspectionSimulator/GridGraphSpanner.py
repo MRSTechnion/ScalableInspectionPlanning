@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 from InspectionSimulator.InspectionPlanningSimulation import compute_visibility
-from InspectionSimulator.SceneLoader import Bounds3D, sphere_collision_check
+from InspectionSimulator.SceneLoader import Bounds3D, ObstacleMesh, ArrayLike3
+from InspectionSimulator.CollisionCheckSphere import sphere_collision_check, is_local_path_collision_free
 
 from dataclasses import dataclass
 from itertools import product
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import networkx as nx
 import numpy as np
-import trimesh
 
-ArrayLike3 = Sequence[float]
 GridPoint = Tuple[float, float, float]
 
 
@@ -96,26 +95,6 @@ def point_to_grid_key(point, grid_origin, grid_step):
         .astype(int)
         .tolist()
     )
-
-def is_local_path_collision_free(
-    start: ArrayLike3,
-    goal: ArrayLike3,
-    radius: float,
-    obstacle: ObstacleMesh,
-    bounds: Bounds3D,
-    edge_sample_num: int,
-) -> bool:
-    """Check straight-line local motion between two free nodes."""
-
-    start = np.asarray(start, dtype=float)
-    goal = np.asarray(goal, dtype=float)
-
-    for t in np.linspace(0.0, 1.0, edge_sample_num):
-        point = (1.0 - t) * start + t * goal
-        if sphere_collision_check(point, radius, obstacle, bounds):
-            return False
-    return True
-
 
 
 def connect_free_grid_points(
@@ -228,11 +207,6 @@ def build_grid_motion_planning_graph(planner_config, object_config, insp_object,
         poi_to_vertices = poi_to_vertices,
         vertex_to_pois = vertex_to_pois
     )
-
-
-# -----------------------------
-# PyBullet visualization
-# -----------------------------
 
 def visualize_grid_sampling(
     artifacts: PlanningArtifacts,
@@ -365,28 +339,3 @@ def visualize_grid_sampling(
     finally:
         if p.isConnected(client):
             p.disconnect(client)
-
-# -----------------------------
-# Example usage
-# -----------------------------
-
-def example_config() -> PlannerConfig:
-    """Small example config; tune this to your bridge model placement."""
-    return PlannerConfig(
-        obj_path=r"../assets/OBJ/Bridge.obj",
-        bounds=Bounds3D(
-            xmin=-6.0,
-            xmax=6.0,
-            ymin=-0.75,
-            ymax=0.75,
-            zmin=0.0,
-            zmax=2.0,
-        ),
-        robot_radius=0.15,
-        grid_resolution=0.5,
-        connectivity=18,
-        edge_sample_num=3,
-        scale=(0.05, 0.05, 0.05),
-        translation=(0, 0.25, 1.5),
-        rotation_rpy=(0.0, 0.0, 0.0),
-    )
