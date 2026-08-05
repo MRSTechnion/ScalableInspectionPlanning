@@ -38,12 +38,12 @@ def inspection_obj_config(obj_config_file) -> InspectionObjectConfig:
         scale=obj_config['scale'],
         translation=obj_config['translation'],
         rotation_rpy=obj_config['rotation'],
-        visibility_threshold=obj_config['visibility_threshold']
+        visibility_threshold=obj_config['visibility_threshold'],
+        robot_radius=obj_config['robot_radius']
     )
 
 def planner_config() -> GridPlannerConfig:
     return GridPlannerConfig(
-        robot_radius=4,
         grid_resolution= np.asarray([10, 10, 10], dtype=float),
         connectivity=6,
         edge_sample_num=3
@@ -72,8 +72,8 @@ if __name__ == '__main__':
     print(f"Took: {t2 - t1} seconds")
 
     print("--- Building motion planning graph ---")
-
-    planning_artifacts = build_grid_motion_planning_graph(planner_config, obj_config, inspection_object, poi_set)
+    root = 0
+    planning_artifacts = build_grid_motion_planning_graph(planner_config, obj_config, inspection_object, poi_set, root)
     G = planning_artifacts.graph
     poi_to_vertices = planning_artifacts.poi_to_vertices
     vertex_to_pois = planning_artifacts.vertex_to_pois
@@ -110,7 +110,6 @@ if __name__ == '__main__':
 
     print("--- Solving GIP problem ---")
 
-    root = 0
     timeout = 10
 
     solver = solver_entry['GroupCutset']

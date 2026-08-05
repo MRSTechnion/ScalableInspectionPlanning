@@ -1064,24 +1064,3 @@ def run_pybullet_viewer(client_id):
         if p.isConnected(client_id):
             p.disconnect(client_id)
 
-def env_config() -> PlannerConfig:
-    """Small example config; tune this to your bridge model placement."""
-    return PlannerConfig(
-        obj_path=r"../assets/OBJ/water_tower.obj",
-        bounds=Bounds3D(
-            xmin=-40.0,
-            xmax=40.0,
-            ymin=-30.5,
-            ymax=30.5,
-            zmin=0.0,
-            zmax=2.5*30,
-        ),
-        robot_radius=0.15,
-        grid_resolution=10,
-        connectivity=18,
-        edge_sample_num=3,
-        scale=(0.05, 0.05, 0.05),
-        translation=(0, 0.25, 1.5),
-        # rotation_rpy=(0.0, 0.0, 0.0),
-        rotation_rpy=[math.pi / 2, 0, 0],
-    )

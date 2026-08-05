@@ -16,7 +16,6 @@ GridPoint = Tuple[float, float, float]
 
 @dataclass
 class GridPlannerConfig:
-    robot_radius: float
     grid_resolution: list[float]
     connectivity: int = 6   # 6, 18, 26
     edge_sample_num: int = 10
@@ -168,9 +167,10 @@ def connect_free_grid_points(
 # Pipeline manager
 # -----------------------------
 # @timing
-def build_grid_motion_planning_graph(planner_config, object_config, insp_object, poi_set) -> PlanningArtifacts:
+def build_grid_motion_planning_graph(planner_config, scene_config, insp_object, poi_set, root) -> PlanningArtifacts:
     """Run the full grid-based planning pipeline and return all artifacts."""
-    sampled_grid = sample_space_grid(object_config.bounds, planner_config.grid_resolution)
+    # TODO - adjust to work with a given root
+    sampled_grid = sample_space_grid(scene_config.bounds, planner_config.grid_resolution)
 
     grid_step = np.zeros_like(planner_config.grid_resolution)
     for i in range(len(grid_step)):
@@ -179,16 +179,16 @@ def build_grid_motion_planning_graph(planner_config, object_config, insp_object,
 
     free_grid = find_free_grid_points(
         sampled_grid=sampled_grid,
-        radius=planner_config.robot_radius,
+        radius=scene_config.robot_radius,
         obstacle=insp_object,
-        bounds=object_config.bounds,
+        bounds=scene_config.bounds,
     )
 
     graph = connect_free_grid_points(
         free_grid=free_grid,
-        radius=planner_config.robot_radius,
+        radius=scene_config.robot_radius,
         obstacle=insp_object,
-        bounds=object_config.bounds,
+        bounds=scene_config.bounds,
         grid_resolution=planner_config.grid_resolution,
         grid_step=grid_step,
         connectivity=planner_config.connectivity,
@@ -199,7 +199,7 @@ def build_grid_motion_planning_graph(planner_config, object_config, insp_object,
         graph=graph,
         poi_set=poi_set,
         object_mesh=insp_object.mesh,
-        visibility_threshold=object_config.visibility_threshold
+        visibility_threshold=scene_config.visibility_threshold
     )
 
     return PlanningArtifacts(
