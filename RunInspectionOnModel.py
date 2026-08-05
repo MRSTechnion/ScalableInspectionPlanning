@@ -51,7 +51,7 @@ def inspection_obj_config(obj_config_file) -> InspectionObjectConfig:
 def planner_config() -> GridPlannerConfig:
     return GridPlannerConfig(
         robot_radius=4,
-        grid_resolution= np.asarray([6, 6, 6], dtype=float),
+        grid_resolution= np.asarray([10, 10, 10], dtype=float),
         connectivity=6,
         edge_sample_num=3
     )
@@ -88,7 +88,24 @@ if __name__ == '__main__':
     planning_artifacts = build_grid_motion_planning_graph(planner_config, inspection_object, bounds)
     G = planning_artifacts.graph
 
-    visibility_threshold_dist = 15
+    # --- Visualize task ---
+    # client_id, mesh_body = visualize_inspection_task_pybullet(
+    #     object_mesh=object_mesh,
+    #     poi_set=poi_set,
+    #     G=G,
+    #     start_node=None,
+    #     solution_edges=None,
+    #     visibility_vertex=None,
+    #     vertex_to_pois=None,
+    #     show_graph_nodes=True,
+    #     show_graph_edges=True,
+    #     show_solution_visibility=False
+    # )
+    #
+    # run_pybullet_viewer(client_id)
+    # ----------
+
+    visibility_threshold_dist = 30
     poi_to_vertices, vertex_to_pois, _ = compute_visibility(G, poi_set, object_mesh, visibility_threshold_dist)
 
     uninspectable = [p for p in poi_to_vertices.keys() if len(poi_to_vertices[p]) == 0]
@@ -113,6 +130,7 @@ if __name__ == '__main__':
                             TimeLim=timeout, out_path='')
     print(tour_edges)
 
+    # --- Visualize solution ---
     client_id, mesh_body = visualize_inspection_task_pybullet(
         object_mesh=object_mesh,
         poi_set=poi_set,
@@ -127,6 +145,6 @@ if __name__ == '__main__':
     )
 
     run_pybullet_viewer(client_id)
-
+    # ----------
 
     pass

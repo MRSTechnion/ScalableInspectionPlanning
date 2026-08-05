@@ -779,8 +779,8 @@ def visualize_inspection_task_pybullet(
             p.addUserDebugLine(
                 positions[u].tolist(),
                 positions[v].tolist(),
-                lineColorRGB=[0.0, 0.1, 0.6],
-                lineWidth=1.0,
+                lineColorRGB=[0.5, 0.5, 0.5],
+                lineWidth=0.5,
                 physicsClientId=client_id,
             )
 
@@ -815,8 +815,8 @@ def visualize_inspection_task_pybullet(
                 p.addUserDebugLine(
                     lineFromXYZ=visibility_pos.tolist(),
                     lineToXYZ=np.asarray(poi_positions[poi_id], dtype=float).tolist(),
-                    lineColorRGB=[0.0, 0.75, 1.0],
-                    lineWidth=2.0,
+                    lineColorRGB=[0.5, 0.0, 0.5],
+                    lineWidth=1.0,
                     physicsClientId=client_id,
                 )
 
