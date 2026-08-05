@@ -761,7 +761,7 @@ def visualize_inspection_task_pybullet(
 
         p.addUserDebugPoints(
             pointPositions=graph_xyz.tolist(),
-            pointColorsRGB=[[0.0, 0.9, 0.0]] * len(graph_xyz),
+            pointColorsRGB=[[0.0, 0.2, 0.9]] * len(graph_xyz),
             pointSize=vertex_size,
             physicsClientId=client_id,
         )
