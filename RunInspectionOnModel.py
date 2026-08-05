@@ -4,8 +4,8 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 
-from InspectionSimulator.GridGraphSpanner import Bounds3D, load_object_env, build_grid_motion_planning_graph
-from InspectionSimulator.GridGraphSpanner import InspectionObjectConfig, GridPlannerConfig
+from InspectionSimulator.SceneLoader import Bounds3D, load_object_env, InspectionObjectConfig
+from InspectionSimulator.GridGraphSpanner import GridPlannerConfig, build_grid_motion_planning_graph
 
 from InspectionSimulator.InspectionPlanningSimulation import (
     sample_pois_on_mesh_surface,
@@ -13,18 +13,13 @@ from InspectionSimulator.InspectionPlanningSimulation import (
     run_pybullet_viewer
 )
 
-from GIP import heuristics
-from GIP.solver_utils import IP_to_Group, SolutionValidation
-import argparse
 from GIP.solvers import (GroupCutsetFormulationMILP, ChargeFormulationMILP, MultiCommodityFlowFormulationMILP,
                          SingleCommodityFlowFormulationMILP)
-from Utils.Readers import ExperimentPicker, IRIS_reader
 
 solver_entry = {"GroupCutset": GroupCutsetFormulationMILP.RunSolver,
                 "Charge": ChargeFormulationMILP.RunSolver,
                 "MCF": MultiCommodityFlowFormulationMILP.RunSolver,
-                "SCF": SingleCommodityFlowFormulationMILP.RunSolver
-                }
+                "SCF": SingleCommodityFlowFormulationMILP.RunSolver}
 
 
 def inspection_obj_config(obj_config_file) -> InspectionObjectConfig:
