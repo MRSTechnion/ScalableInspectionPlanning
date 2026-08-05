@@ -10,7 +10,8 @@
   },
   "scale": [0.05, 0.05, 0.05],
   "translation": [0, 0, 0],
-  "rotation": [1.57, 0, 0]
+  "rotation": [1.57, 0, 0],
+  "visibility_threshold": 30
 }
 
 

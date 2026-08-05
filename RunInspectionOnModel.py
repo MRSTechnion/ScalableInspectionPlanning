@@ -4,14 +4,11 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 
-from InspectionSimulator.GridGraphSpanner import Bounds3D, PlannerConfig, load_object_env
+from InspectionSimulator.GridGraphSpanner import Bounds3D, load_object_env, build_grid_motion_planning_graph
 from InspectionSimulator.GridGraphSpanner import InspectionObjectConfig, GridPlannerConfig
 
 from InspectionSimulator.InspectionPlanningSimulation import (
     sample_pois_on_mesh_surface,
-    build_grid_motion_planning_graph,
-    compute_visibility,
-    visualize_inspection_task,
     visualize_inspection_task_pybullet,
     run_pybullet_viewer
 )
@@ -46,6 +43,7 @@ def inspection_obj_config(obj_config_file) -> InspectionObjectConfig:
         scale=obj_config['scale'],
         translation=obj_config['translation'],
         rotation_rpy=obj_config['rotation'],
+        visibility_threshold=obj_config['visibility_threshold']
     )
 
 def planner_config() -> GridPlannerConfig:
@@ -62,14 +60,9 @@ if __name__ == '__main__':
 
     t0 = time.time()
     print("--- Loading object model ---")
-    inspection_object = load_object_env(
-        obj_path=obj_config.obj_path,
-        scale=obj_config.scale,
-        translation=obj_config.translation,
-        rotation_rpy=obj_config.rotation_rpy,
-    )
+    inspection_object = load_object_env(obj_path=obj_config.obj_path, scale=obj_config.scale,
+                                        translation=obj_config.translation, rotation_rpy=obj_config.rotation_rpy)
 
-    bounds = obj_config.bounds
     object_mesh = inspection_object.mesh
     seed = 0
 
@@ -85,8 +78,10 @@ if __name__ == '__main__':
 
     print("--- Building motion planning graph ---")
 
-    planning_artifacts = build_grid_motion_planning_graph(planner_config, inspection_object, bounds)
+    planning_artifacts = build_grid_motion_planning_graph(planner_config, obj_config, inspection_object, poi_set)
     G = planning_artifacts.graph
+    poi_to_vertices = planning_artifacts.poi_to_vertices
+    vertex_to_pois = planning_artifacts.vertex_to_pois
 
     # --- Visualize task ---
     # client_id, mesh_body = visualize_inspection_task_pybullet(
@@ -105,8 +100,6 @@ if __name__ == '__main__':
     # run_pybullet_viewer(client_id)
     # ----------
 
-    visibility_threshold_dist = 30
-    poi_to_vertices, vertex_to_pois, _ = compute_visibility(G, poi_set, object_mesh, visibility_threshold_dist)
 
     uninspectable = [p for p in poi_to_vertices.keys() if len(poi_to_vertices[p]) == 0]
     I = set(poi_to_vertices.keys()).difference(uninspectable)

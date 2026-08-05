@@ -19,9 +19,6 @@ import pybullet as p
 import pybullet_data
 import trimesh
 
-from InspectionSimulator.GridGraphSpanner import (
-    load_object_env, Bounds3D, PlannerConfig, build_grid_motion_planning_graph)
-
 VertexId = Hashable
 POIId = int
 
@@ -109,7 +106,6 @@ def sample_pois_on_mesh_surface(
 
     return POISet(pois=pois)
 
-# TODO - this is not considering occlusions.. very very basic, must be replaced.
 def compute_visibility_by_distance(
     graph: nx.Graph,
     poi_set: POISet,
@@ -226,7 +222,7 @@ def compute_visibility(
             poi_to_vertices[poi.poi_id].add(node)
             vertex_to_pois[node].add(poi.poi_id)
 
-    return poi_to_vertices, vertex_to_pois, vertex_xyz
+    return poi_to_vertices, vertex_to_pois
 
 def build_inspection_planning_instance(
     graph: nx.Graph,
@@ -1089,66 +1085,3 @@ def env_config() -> PlannerConfig:
         # rotation_rpy=(0.0, 0.0, 0.0),
         rotation_rpy=[math.pi / 2, 0, 0],
     )
-if __name__ == '__main__':
-    config = env_config()
-    inspection_object = load_object_env(
-        obj_path=config.obj_path,
-        scale=config.scale,
-        translation=config.translation,
-        rotation_rpy=config.rotation_rpy,
-    )
-    object_mesh = inspection_object.mesh
-    seed = 0
-    num_pois = 100
-    poi_set = sample_pois_on_mesh_surface(object_mesh=object_mesh, num_pois=num_pois, seed=seed)
-
-    # TODO - separate mp config from environment config
-    planning_artifacts = build_grid_motion_planning_graph(config)
-    G = planning_artifacts.graph
-
-    visibility_threshold_dist = 5
-    visibility_rel = compute_visibility_by_distance(G, poi_set, visibility_threshold_dist)
-
-    visualize_inspection_task(object_mesh, poi_set, G)
-    plt.show()
-
-    pass
-    #
-    # artifacts = build_grid_motion_planning_graph(cfg)
-    # mp_graph = artifacts.graph
-    # obst_mesh = artifacts.obstacle.mesh
-    #
-    # num_pois = 500
-    # vis_th = 1
-    #
-    # ip_problem = build_inspection_planning_instance(mp_graph, obst_mesh, num_pois, vis_th)
-    #
-    # save_path = f"./inspection_experiments/gip_instance_N{G.number_of_nodes()}_K{num_pois}_bridge.pkl"
-    #
-    # S = ip_problem.poi_to_vertices
-    # vertex_poi_vis = ip_problem.vertex_to_pois
-    # I = set(S.keys())
-    #
-    # meta = {
-    #     # "poi_set": ip_problem.poi_set,
-    #     # "visibility_threshold": ip_problem.visibility_threshold,
-    # }
-    #
-    # save_simulated_instance(
-    #     save_path,
-    #     G=G,
-    #     I=I,
-    #     S=S,
-    #     vertex_poi_vis=vertex_poi_vis,
-    #     root=0,
-    #     meta=meta,
-    # )
-    # print(f"Instance saved to {save_path}")
-    #
-    # visualize_inspection_instance(ip_problem, object_mesh_for_planning,
-    #                               show_visibility=True,
-    #                               only_vertices_with_visibility=True,
-    #                               max_visibility_edges=3000
-    #                               )
-    #
-    # plt.show()

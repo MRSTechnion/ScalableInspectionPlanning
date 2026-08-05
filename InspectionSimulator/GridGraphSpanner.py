@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from InspectionSimulator.InspectionPlanningSimulation import compute_visibility
+
 from dataclasses import dataclass
 from itertools import product
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -7,7 +9,6 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import networkx as nx
 import numpy as np
 import trimesh
-
 
 ArrayLike3 = Sequence[float]
 GridPoint = Tuple[float, float, float]
@@ -66,6 +67,7 @@ class InspectionObjectConfig:
     scale: Tuple[float, float, float] = (1.0, 1.0, 1.0)
     translation: Tuple[float, float, float] = (0.0, 0.0, 0.0)
     rotation_rpy: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    visibility_threshold: float = np.inf
 
 @dataclass
 class GridPlannerConfig:
@@ -91,10 +93,10 @@ class PlannerConfig:
 
 @dataclass
 class PlanningArtifacts:
-    obstacle: ObstacleMesh
-    sampled_grid: np.ndarray
-    free_grid: np.ndarray
     graph: nx.Graph
+    poi_to_vertices: dict
+    vertex_to_pois: dict
+
 
 
 # -----------------------------
@@ -131,11 +133,11 @@ def load_object_env(
 
     scale = np.asarray(scale, dtype=float)
     translation = np.asarray(translation, dtype=float)
-    rotation = rpy_to_matrix(*rotation_rpy)
+    rotation_rpy = rpy_to_matrix(*rotation_rpy)
 
     vertices = np.asarray(mesh.vertices, dtype=float)
     vertices = vertices * scale
-    vertices = (rotation @ vertices.T).T
+    vertices = (rotation_rpy @ vertices.T).T
     vertices = vertices + translation
     mesh.vertices = vertices
 
@@ -333,39 +335,44 @@ def connect_free_grid_points(
 # Pipeline manager
 # -----------------------------
 # @timing
-def build_grid_motion_planning_graph(config, insp_object, env_bounds) -> PlanningArtifacts:
+def build_grid_motion_planning_graph(planner_config, object_config, insp_object, poi_set) -> PlanningArtifacts:
     """Run the full grid-based planning pipeline and return all artifacts."""
+    sampled_grid = sample_space_grid(object_config.bounds, planner_config.grid_resolution)
 
-    sampled_grid = sample_space_grid(env_bounds, config.grid_resolution)
-
-    grid_step = np.zeros_like(config.grid_resolution)
+    grid_step = np.zeros_like(planner_config.grid_resolution)
     for i in range(len(grid_step)):
         grid_values = np.unique(sampled_grid[:,i])
         grid_step[i] = grid_values[1]-grid_values[0]
 
     free_grid = find_free_grid_points(
         sampled_grid=sampled_grid,
-        radius=config.robot_radius,
+        radius=planner_config.robot_radius,
         obstacle=insp_object,
-        bounds=env_bounds,
+        bounds=object_config.bounds,
     )
 
     graph = connect_free_grid_points(
         free_grid=free_grid,
-        radius=config.robot_radius,
+        radius=planner_config.robot_radius,
         obstacle=insp_object,
-        bounds=env_bounds,
-        grid_resolution=config.grid_resolution,
+        bounds=object_config.bounds,
+        grid_resolution=planner_config.grid_resolution,
         grid_step=grid_step,
-        connectivity=config.connectivity,
-        edge_sample_num=config.edge_sample_num,
+        connectivity=planner_config.connectivity,
+        edge_sample_num=planner_config.edge_sample_num,
+    )
+
+    poi_to_vertices, vertex_to_pois = compute_visibility(
+        graph=graph,
+        poi_set=poi_set,
+        object_mesh=insp_object.mesh,
+        visibility_threshold=object_config.visibility_threshold
     )
 
     return PlanningArtifacts(
-        obstacle=insp_object,
-        sampled_grid=sampled_grid,
-        free_grid=free_grid,
         graph=graph,
+        poi_to_vertices = poi_to_vertices,
+        vertex_to_pois = vertex_to_pois
     )
 
 
@@ -529,10 +536,3 @@ def example_config() -> PlannerConfig:
         translation=(0, 0.25, 1.5),
         rotation_rpy=(0.0, 0.0, 0.0),
     )
-
-if __name__ == "__main__":
-    cfg = example_config()
-    artifacts = build_grid_motion_planning_graph(cfg)
-
-    visualize_grid_sampling(artifacts, show_sampled_grid=False, sampled_grid_stride=10, node_radius=0.08,
-                            edge_line_width=2.0)
