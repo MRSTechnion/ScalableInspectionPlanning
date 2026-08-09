@@ -12,7 +12,7 @@
   "translation": [0, 0.25, 2],
   "rotation": [0, 0, 0],
   "visibility_threshold": 1,
-  "robot_radius": 4
+  "robot_radius": 0.1
 }
 
 
