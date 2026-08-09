@@ -1,5 +1,5 @@
 {
-  "obj_path": "./assets/OBJ/water_tower.obj",
+  "obj_path": "/home/adir/PycharmProjects/ScalableInspectionPlanning/assets/OBJ/water_tower.obj",
   "bounds": {
     "xmin": -40,
     "xmax": 40,

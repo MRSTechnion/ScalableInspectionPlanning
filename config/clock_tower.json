@@ -1,5 +1,5 @@
 {
-  "obj_path": "./assets/OBJ/MEA3.obj",
+  "obj_path": "/home/adir/PycharmProjects/ScalableInspectionPlanning/assets/OBJ/MEA3.obj",
   "bounds": {
     "xmin": -20,
     "xmax": 20,
