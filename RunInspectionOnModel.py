@@ -39,7 +39,8 @@ def inspection_obj_config(obj_config_file) -> InspectionObjectConfig:
         translation=obj_config['translation'],
         rotation_rpy=obj_config['rotation'],
         visibility_threshold=obj_config['visibility_threshold'],
-        robot_radius=obj_config['robot_radius']
+        robot_radius=obj_config['robot_radius'],
+        edge_CC_samples=obj_config['edge_CC_samples']
     )
 
 def planner_config() -> GridPlannerConfig:
