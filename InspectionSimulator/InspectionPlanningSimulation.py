@@ -237,7 +237,7 @@ def compute_vertex_vis(
     visibility_threshold: float,
     occlusion_tolerance: float = 1e-5,
 ):
-    v_xyz = np.asarray(v.pos, dtype=float).reshape(3,)
+    v_xyz = np.asarray(v, dtype=float).reshape(3,)
 
     candidate_indices = poi_set.nearby_indices(
         xyz=v_xyz,
