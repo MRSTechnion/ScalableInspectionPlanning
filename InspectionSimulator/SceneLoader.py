@@ -61,8 +61,7 @@ class InspectionObjectConfig:
     translation: Tuple[float, float, float] = (0.0, 0.0, 0.0)
     rotation_rpy: Tuple[float, float, float] = (0.0, 0.0, 0.0)
     visibility_threshold: float = np.inf
-    robot_radius:float = 1,
-    edge_CC_samples:int = 3
+    robot_radius:float = 1
 
 @dataclass
 class ObstacleMesh:
