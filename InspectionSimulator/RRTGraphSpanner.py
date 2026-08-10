@@ -1,13 +1,17 @@
+import math
 from dataclasses import dataclass
 import time
 
-from InspectionSimulator.InspectionPlanningSimulation import compute_visibility, visualize_inspection_task_pybullet, run_pybullet_viewer
+from rasterio.crs import defaultdict
+
+from InspectionSimulator.InspectionPlanningSimulation import compute_vertex_vis, visualize_inspection_task_pybullet, run_pybullet_viewer
 from RunInspectionOnModel import inspection_obj_config, load_object_env, sample_pois_on_mesh_surface
 from InspectionSimulator.CollisionCheckSphere import sphere_collision_check, is_local_path_collision_free
 
 import random
 from scipy.spatial import KDTree
 import networkx as nx
+import numpy as np
 
 
 seed = 0
@@ -17,6 +21,16 @@ rng = random.Random(seed)
 class RRTPlannerConfig:
     eta: float
     max_iterations: int
+    edge_sample_num: int = 5
+    goal_bias: float = 0.0
+    coverage_target: float = 1.0
+
+@dataclass
+class PlanningArtifacts:
+    graph: nx.Graph
+    poi_to_vertices: dict
+    vertex_to_pois: dict
+
 
 def init_tree(root_cfg):
     G = nx.empty_graph()
@@ -26,10 +40,10 @@ def init_tree(root_cfg):
 
 def sample_tree_point(T, object_mesh, bounds, robot_radius, conn_radius=200):
     v_rand = sample_point_until_free(object_mesh, bounds, robot_radius)
-    nearest_tree_configs = T.query_ball_point(v_rand)
+    nearest_tree_configs = T.query(v_rand)
 
-    i_near = nearest_tree_configs[0]
-    v_near = T[i_near]
+    d, i_near = nearest_tree_configs
+    v_near = T.data[i_near]
     return i_near, v_near, v_rand
 
 def sample_point_until_free(object_mesh, bounds, radius, tol=1e-9):
@@ -44,37 +58,83 @@ def sample_point_until_free(object_mesh, bounds, radius, tol=1e-9):
         z_rand = rng.uniform(bounds.zmin, bounds.zmax - tol)
         point = (x_rand, y_rand, z_rand)
 
-    return point
-
+    return np.array(point)
 
 def extend_in_direction(v_near, v_rand, eta):
-    pass
+    d_vec = np.array(v_rand - v_near)
+    d = math.hypot(*d_vec)
+    step_prc = min(1, eta/d)
 
-def extend_tree(G, T, i, object_mesh, bounds, robot_radius, eta):
-    i_near, v_near, v_rand = sample_tree_point(T, object_mesh, bounds, robot_radius)
-    v_new = extend_in_direction(v_near, v_rand, eta)
+    v_new = v_near + step_prc*d_vec
+    return v_new
 
-    G.add_node(i, pos=v_new)
-    G.add_edge((i_near, i))
+def extend_tree(G, T, i, object_mesh, obj_config, planner_config):
+    v_new = None
+
+    while v_new is None:
+        i_near, v_near, v_rand = sample_tree_point(T, object_mesh, obj_config.bounds, obj_config.robot_radius)
+        v_new_cand = extend_in_direction(v_near, v_rand, planner_config.eta)
+
+        if is_local_path_collision_free(v_near, v_new_cand,
+                                        obj_config.robot_radius,
+                                        object_mesh,
+                                        obj_config.bounds,
+                                        planner_config.edge_sample_num):
+            v_new = v_new_cand
+            G.add_node(i, pos=v_new)
+            G.add_edge(i_near, i)
+
+            # update T
+            # TODO - improve using a buffer
+            updated_points = np.vstack([
+                np.asarray(T.data),
+                np.asarray(v_new, dtype=float),
+            ])
+            T = KDTree(updated_points)
+
+    return v_new, T
 
 def build_RRT_motion_planning_graph(planner_config, obj_config, object_mesh, poi_set, root):
     G, T = init_tree(root)
-    v_sample = sample_tree_point(T, object_mesh, obj_config.bounds, obj_config.robot_radius, conn_radius=5)
-
-    visible_set = compute_visibility(root)
     i = 0
-    while not poi_set.issubset(visible_set) and i < planner_config.max_iterations:
-        i += 1
-        extend_tree(T, visible_set)
-        for v in T:
-            visible_set.add(compute_visibility(v))
 
+    visible_pois = compute_vertex_vis(root, poi_set, object_mesh, obj_config.visibility_threshold)
+    all_pois = {poi.poi_id for poi in poi_set.pois}
+
+    vertex_to_pois = defaultdict(set)
+    poi_to_vertices = defaultdict(set)
+
+    vertex_to_pois[root] = visible_pois
+
+    for poi in visible_pois:
+        poi_to_vertices[poi].add(root)
+
+    visible_set = set(visible_pois)
+    while not all_pois.issubset(visible_set) and i < planner_config.max_iterations:
+        i += 1
+        v_new, T = extend_tree(G, T, i, object_mesh, obj_config, planner_config)
+
+        visible_pois = compute_vertex_vis(v_new, poi_set, object_mesh.mesh, obj_config.visibility_threshold)
+        vertex_to_pois[i] = visible_pois
+
+        for poi in visible_pois:
+            poi_to_vertices[poi].add(i)
+
+        visible_set.update(visible_pois)
+
+    res = PlanningArtifacts(graph=G,
+                             poi_to_vertices=poi_to_vertices,
+                             vertex_to_pois=vertex_to_pois)
+
+    return res
 
 
 def planner_config():
     return RRTPlannerConfig(
-        eta = 3,
-        max_iterations = 200
+        eta = 1,
+        max_iterations = 500,
+        goal_bias = 0.0,
+        coverage_target = 1.0
     )
 
 if __name__ == '__main__':
@@ -100,11 +160,14 @@ if __name__ == '__main__':
     print(f"Took: {t2 - t1} seconds")
 
     print("--- Building motion planning graph ---")
-    root = (-40, -30, 0)    # TODO - make a part of the config
+    root = (-39, -29, 1)    # TODO - make a part of the config
     planning_artifacts = build_RRT_motion_planning_graph(planner_config, obj_config, inspection_object, poi_set, root)
     G = planning_artifacts.graph
     poi_to_vertices = planning_artifacts.poi_to_vertices
     vertex_to_pois = planning_artifacts.vertex_to_pois
+
+    t3 = time.time()
+    print(f"Took: {t3 - t2} seconds")
 
     # --- Visualize task ---
     client_id, mesh_body = visualize_inspection_task_pybullet(
