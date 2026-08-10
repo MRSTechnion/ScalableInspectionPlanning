@@ -21,9 +21,9 @@ rng = random.Random(seed)
 class RRTPlannerConfig:
     eta: float
     max_iterations: int
+    rrg_max_r: float
     edge_sample_num: int = 5
-    goal_bias: float = 0.0
-    coverage_target: float = 1.0
+    rrg_conn_k: int = 0
 
 @dataclass
 class PlanningArtifacts:
@@ -94,6 +94,22 @@ def extend_tree(G, T, i, object_mesh, obj_config, planner_config):
 
     return v_new, T
 
+def augment_to_rrg(G, T, planner_config, obj_config, object_mesh):
+    for i, v_pos in G.nodes(data='pos'):
+        cand_vertices = T.query_ball_point(v_pos, planner_config.rrg_max_r)
+        points_num = min(len(cand_vertices), planner_config.rrg_conn_k)
+        for j in cand_vertices[:points_num]: #TODO - biased towards lower index? fix
+            if i == j or G.has_edge(i,j):
+                continue
+            v_ext_pos = G.nodes()[j]['pos']
+            if is_local_path_collision_free(v_pos, v_ext_pos,
+                                            obj_config.robot_radius,
+                                            object_mesh,
+                                            obj_config.bounds,
+                                            planner_config.edge_sample_num):
+                G.add_edge(i, j)
+
+
 def build_RRT_motion_planning_graph(planner_config, obj_config, object_mesh, poi_set, root):
     G, T = init_tree(root)
     i = 0
@@ -122,6 +138,11 @@ def build_RRT_motion_planning_graph(planner_config, obj_config, object_mesh, poi
 
         visible_set.update(visible_pois)
 
+    print(f"visibility ratio = {len(visible_set)/len(all_pois)}")
+
+    if planner_config.rrg_conn_k > 0:
+        augment_to_rrg(G, T, planner_config, obj_config, object_mesh)
+
     res = PlanningArtifacts(graph=G,
                              poi_to_vertices=poi_to_vertices,
                              vertex_to_pois=vertex_to_pois)
@@ -131,10 +152,10 @@ def build_RRT_motion_planning_graph(planner_config, obj_config, object_mesh, poi
 
 def planner_config():
     return RRTPlannerConfig(
-        eta = 1,
-        max_iterations = 500,
-        goal_bias = 0.0,
-        coverage_target = 1.0
+        eta = 2,
+        max_iterations = 1000,
+        rrg_conn_k = 10,
+        rrg_max_r = 5
     )
 
 if __name__ == '__main__':
