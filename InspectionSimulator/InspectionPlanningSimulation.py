@@ -10,7 +10,8 @@ import networkx as nx
 import numpy as np
 import math
 import trimesh
-from scipy.spatial import cKDTree
+from rasterio.crs import defaultdict
+from scipy.spatial import KDTree
 
 import time
 from typing import Optional
@@ -22,12 +23,12 @@ import trimesh
 VertexId = Hashable
 POIId = int
 
-
 @dataclass
 class POI:
-    """A point of interest on the bridge structure."""
+    """A point of interest on the inspected structure."""
+
     poi_id: POIId
-    xyz: np.ndarray  # shape (3,)
+    xyz: np.ndarray
     metadata: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -37,22 +38,65 @@ class POI:
 @dataclass
 class POISet:
     """
-    Separate storage for POIs.
+    POI storage with a reusable spatial index.
 
-    This is intentionally external to the graph, so it can later be used for:
-    - visualization
-    - route validation / coverage checking
-    - inspection planning objectives
+    If POIs are added, removed, or moved after construction,
+    ``rebuild_spatial_index()`` must be called.
     """
+
     pois: List[POI]
 
-    def as_array(self) -> np.ndarray:
+    poi_xyz: np.ndarray = field(init=False, repr=False)
+    poi_tree: Optional[KDTree] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.pois = list(self.pois)
+        self._validate_unique_ids()
+        self.rebuild_spatial_index()
+
+    def _validate_unique_ids(self) -> None:
+        poi_ids = [poi.poi_id for poi in self.pois]
+
+        if len(poi_ids) != len(set(poi_ids)):
+            raise ValueError("POI IDs must be unique")
+
+    def rebuild_spatial_index(self) -> None:
+        """Rebuild cached coordinates and the POI KD-tree."""
         if not self.pois:
-            return np.zeros((0, 3), dtype=float)
-        return np.asarray([poi.xyz for poi in self.pois], dtype=float)
+            self.poi_xyz = np.empty((0, 3), dtype=float)
+            self.poi_tree = None
+            return
+
+        self.poi_xyz = np.asarray(
+            [poi.xyz for poi in self.pois],
+            dtype=float,
+        )
+
+        self.poi_tree = KDTree(self.poi_xyz)
+
+    def nearby_indices(
+        self,
+        xyz: np.ndarray,
+        radius: float,
+    ) -> List[int]:
+        """Return indices of POIs within ``radius`` of ``xyz``."""
+        if radius < 0:
+            raise ValueError("radius must be non-negative")
+
+        if self.poi_tree is None:
+            return []
+
+        xyz = np.asarray(xyz, dtype=float).reshape(3,)
+        return self.poi_tree.query_ball_point(xyz, r=radius)
+
+    def as_array(self) -> np.ndarray:
+        return self.poi_xyz.copy()
 
     def as_dict(self) -> Dict[POIId, np.ndarray]:
-        return {poi.poi_id: poi.xyz.copy() for poi in self.pois}
+        return {
+            poi.poi_id: poi.xyz.copy()
+            for poi in self.pois
+        }
 
 
 @dataclass
@@ -72,8 +116,6 @@ class InspectionPlanningInstance:
 
     # Cached xyz for graph nodes
     vertex_xyz: Dict[VertexId, np.ndarray]
-
-
 
 
 def sample_pois_on_mesh_surface(
@@ -106,43 +148,11 @@ def sample_pois_on_mesh_surface(
 
     return POISet(pois=pois)
 
-def compute_visibility_by_distance(
-    graph: nx.Graph,
-    poi_set: POISet,
-    visibility_threshold: float,
-) -> Tuple[Dict[POIId, List[VertexId]], Dict[VertexId, List[POIId]], Dict[VertexId, np.ndarray]]:
-    """
-    Compute visibility relation:
-        POI is visible from vertex iff Euclidean distance between POI xyz
-        and vertex xyz is <= visibility_threshold.
-
-    Uses a KD-tree over graph vertex xyz for efficiency.
-    """
-
-    nodes = list(graph.nodes)
-    positions = list(nx.get_node_attributes(graph, "pos").values())
-    vertex_xyz = np.asarray(positions, dtype=float)
-
-    tree = cKDTree(vertex_xyz)
-
-    poi_to_vertices: Dict[POIId, List[VertexId]] = {poi.poi_id: [] for poi in poi_set.pois}
-    vertex_to_pois: Dict[VertexId, List[POIId]] = {node: [] for node in nodes}
-
-    for poi in poi_set.pois:
-        idxs = tree.query_ball_point(poi.xyz, r=visibility_threshold)
-        visible_nodes = [nodes[i] for i in idxs]
-
-        poi_to_vertices[poi.poi_id] = visible_nodes
-        for node in visible_nodes:
-            vertex_to_pois[node].append(poi.poi_id)
-
-    return poi_to_vertices, vertex_to_pois, vertex_xyz
-
 def compute_visibility(
     graph: nx.Graph,
     poi_set: POISet,
     object_mesh: trimesh.Trimesh,
-    visibility_threshold: float,
+    visibility_threshold: float = np.inf,
     occlusion_tolerance: float = 1e-5,
 ):
     nodes = list(graph.nodes)
@@ -153,16 +163,10 @@ def compute_visibility(
         dtype=float,
     )
 
-    tree = cKDTree(vertex_xyz)
+    tree = KDTree(vertex_xyz)
 
-    poi_to_vertices = {
-        poi.poi_id: set()
-        for poi in poi_set.pois
-    }
-    vertex_to_pois = {
-        node: set()
-        for node in nodes
-    }
+    poi_to_vertices = defaultdict(set)
+    vertex_to_pois = defaultdict(set)
 
     for poi in poi_set.pois:
         # Broad phase: vertices close enough to inspect the POI.
@@ -224,6 +228,52 @@ def compute_visibility(
 
     return poi_to_vertices, vertex_to_pois
 
+# TODO - implement a single ray casting function to use in all visibility functions
+# TODO - implement a complementary single-POI visibility function, and choose between them according to sets sizes
+def compute_vertex_vis(
+    v,
+    poi_set: POISet,
+    object_mesh: trimesh.Trimesh,
+    visibility_threshold: float,
+    occlusion_tolerance: float = 1e-5,
+):
+    v_xyz = np.asarray(v.pos, dtype=float).reshape(3,)
+
+    candidate_indices = poi_set.nearby_indices(
+        xyz=v_xyz,
+        radius=visibility_threshold,
+    )
+
+    vis_set = set()
+
+    for candidate_idx in candidate_indices:
+        poi = poi_set.pois[candidate_idx]
+        vector = poi_set.poi_xyz[candidate_idx] - v_xyz
+        target_distance = np.linalg.norm(vector)
+
+        if target_distance <= occlusion_tolerance:
+            continue
+
+        direction = vector / target_distance
+
+        _, _, hit_locations = object_mesh.ray.intersects_id(
+            ray_origins=v_xyz[None, :],
+            ray_directions=direction[None, :],
+            multiple_hits=False,
+            return_locations=True,
+        )
+
+        if len(hit_locations) == 0:
+            vis_set.add(poi.poi_id)
+            continue
+
+        hit_distance = np.linalg.norm(hit_locations[0] - v_xyz)
+
+        if hit_distance >= target_distance - occlusion_tolerance:
+            vis_set.add(poi.poi_id)
+
+    return vis_set
+
 def build_inspection_planning_instance(
     graph: nx.Graph,
     bridge_mesh: trimesh.Trimesh,
@@ -241,7 +291,7 @@ def build_inspection_planning_instance(
 
     poi_set = sample_pois_on_mesh_surface(object_mesh=bridge_mesh, num_pois=num_pois, seed=seed)
 
-    poi_to_vertices, vertex_to_pois, vertex_xyz = compute_visibility_by_distance(
+    poi_to_vertices, vertex_to_pois, vertex_xyz = compute_visibility(
         graph=graph,
         poi_set=poi_set,
         visibility_threshold=visibility_threshold,
