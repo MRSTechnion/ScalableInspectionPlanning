@@ -174,7 +174,7 @@ def TM_solver_groups_scipy(G, r, I, vis_set, *, weight="weight", assume_int_0_to
     return st_edges, solution_process_copies
 
 def TM_solver_groups_directed(G, r, I, vis_set):
-    solution_edges = TM_solver_groups_scipy(G, r, I, vis_set)
+    solution_edges, _ = TM_solver_groups_scipy(G, r, I, vis_set)
 
     H = nx.Graph()
     H.add_edges_from(solution_edges)

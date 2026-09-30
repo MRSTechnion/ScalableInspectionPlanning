@@ -8,13 +8,16 @@ from GIP.solver_utils.SolutionValidation import validate_solution_groups
 
 from Utils.Readers.SimInstanceIO import load_simulated_instance
 import os
+from Analysis.gurobi_trace import AnytimeTrace
 
 # import sys
 # sys.path.append("/home/adir/PycharmProjects/SteinerTreeSolver/Simulator")
 
 heuristic_freq = 10
 
-def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name='', TimeLim=1000, out_path=''):
+def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name='', TimeLim=1000, out_path='', stats_out=None):
+    """stats_out: optional dict, filled with final solver stats and the anytime
+    (time, incumbent, bound) trace -- see Analysis.gurobi_trace."""
     m = Model("GIP_Charge")
     m.setParam('TimeLimit', TimeLim)
     if out_path != '':
@@ -82,7 +85,10 @@ def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name=''
 
 
     m.update()
-    m.optimize()
+    _trace = AnytimeTrace()
+    m.optimize(_trace.wrap(None))
+    if stats_out is not None:
+        stats_out.update(_trace.summary(m), formulation='MCF')
 
     return edges_from_model(m, y)
 

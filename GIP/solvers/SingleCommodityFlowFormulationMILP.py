@@ -1,4 +1,5 @@
 import argparse
+import networkx as nx
 
 from GIP.heuristics import InspectionPostsolve
 from GIP.solver_utils import IP_to_Group
@@ -9,13 +10,16 @@ from GIP.heuristics.InspectionHeuristic import TM_solver_groups_scipy
 from GIP.solver_utils.SolutionValidation import validate_solution_groups
 
 import os
+from Analysis.gurobi_trace import AnytimeTrace
 # import sys
 # sys.path.append("/home/adir/PycharmProjects/SteinerTreeSolver/Simulator")
 
 heuristic_freq = 10
 
 
-def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name='', TimeLim=1000, out_path=''):
+def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name='', TimeLim=1000, out_path='', stats_out=None):
+    """stats_out: optional dict, filled with final solver stats and the anytime
+    (time, incumbent, bound) trace -- see Analysis.gurobi_trace."""
     m = Model("GIP_SCF")
     m.setParam('TimeLimit', TimeLim)
     if out_path != '':
@@ -78,6 +82,7 @@ def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name=''
     m._G, m._D, m._S, m._r, m._I = G, D, S, root, I
     m._vertex_poi_vis = vertex_poi_vis
     m._x = y
+    m._sure_edges = {e for e in sure_edges if e in y}
     m._unc_groups = None
     m._heuristic_counter = 0
     m._Glp = G.copy()
@@ -98,38 +103,106 @@ def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name=''
     # ---------------------------------------------------------
 
     # m.Params.LazyConstraints = 1
-    # m.optimize(cut_heuristic_callback)
+    _trace = AnytimeTrace()
+    m.optimize(_trace.wrap(cut_heuristic_callback))
+    if stats_out is not None:
+        stats_out.update(_trace.summary(m), formulation='SCF')
 
-    m.optimize()
+    # m.optimize()
 
     return edges_from_model(m, y)
 
 
+def candidate_violations(model, solution_edges):
+    """Return reasons why a binary route cannot be completed by the SCF model."""
+    selected = set(solution_edges)
+    violations = []
+
+    unknown = selected.difference(model._x.keys())
+    if unknown:
+        violations.append(f"{len(unknown)} edge(s) are not routing variables")
+
+    missing_sure = model._sure_edges.difference(selected)
+    if missing_sure:
+        violations.append(f"{len(missing_sure)} required edge(s) are missing")
+
+    for v in model._D.nodes():
+        in_degree = sum((u, w) in selected for u, w in model._D.in_edges(v))
+        out_degree = sum((u, w) in selected for u, w in model._D.out_edges(v))
+        if in_degree != out_degree:
+            violations.append(
+                f"route imbalance at {v}: in={in_degree}, out={out_degree}"
+            )
+
+    if not any(u == model._r for u, _ in selected):
+        violations.append("no selected edge leaves the root")
+
+    for group_id, group_vertices in model._S.items():
+        if not any((u, v) in selected for u, v in model._D.in_edges(group_vertices)):
+            violations.append(f"group {group_id} has no selected in-edge")
+
+    # In the SCF formulation every selected non-root component has positive
+    # demand, so it must be reachable from the root.
+    H = nx.DiGraph()
+    H.add_nodes_from(model._D.nodes())
+    H.add_edges_from(selected.intersection(model._x.keys()))
+    reachable = nx.descendants(H, model._r) | {model._r}
+    selected_vertices = {v for edge in selected for v in edge}
+    unreachable = selected_vertices.difference(reachable)
+    if unreachable:
+        violations.append(f"{len(unreachable)} selected vertex/vertices are root-disconnected")
+
+    return violations
+
+
+def bidirected_tree_candidate(model, tree_edges):
+    """Build a binary-feasible, root-connected route from the heuristic tree."""
+    support_edges = set(tree_edges)
+
+    # Forced arcs must be included. Connect them to the root as well; an
+    # isolated balanced component is infeasible for single-commodity flow.
+    for u, v in model._sure_edges:
+        support_edges.add((u, v))
+        try:
+            path = nx.shortest_path(model._G, model._r, u, weight="weight")
+        except nx.NetworkXNoPath:
+            continue
+        support_edges.update(zip(path[:-1], path[1:]))
+
+    # If all groups are visible at the root, the inspection tree can be empty,
+    # while the formulation still requires positive root out-flow.
+    if not support_edges:
+        root_neighbors = list(model._G.neighbors(model._r))
+        if root_neighbors:
+            v = min(
+                root_neighbors,
+                key=lambda w: model._G[model._r][w]["weight"],
+            )
+            support_edges.add((model._r, v))
+
+    selected = set()
+    for u, v in support_edges:
+        if (u, v) in model._x:
+            selected.add((u, v))
+        if (v, u) in model._x:
+            selected.add((v, u))
+
+    return selected
+
+
 def inject_suggested_solution(model, solution_edges, where):
-    # Freeze consistent ordering once per call
-    x_items = list(model._x.items())  # [((u,v), var), ...]
-    vars_list = [var for key, var in x_items]
+    # A tour is a walk and may repeat arcs. The MILP variables are binary, so
+    # objective value and feasibility must be computed from its unique support.
+    selected = set(solution_edges)
+    unknown = selected.difference(model._x.keys())
+    if unknown:
+        print(f"Primal heuristic skipped: {len(unknown)} unknown edge(s)")
+        return
 
-    # Build candidate values keyed by edge
-    cand_sol = {key: 0 for key, _ in x_items}
-    cand_obj = 0.0
-    for (u, v) in solution_edges:
-        if (u, v) in cand_sol:
-            cand_sol[(u, v)] = 1.0
-            cand_obj += model._D[u][v]["weight"]
-        else:
-            # Edge not in var set: ignore or handle as error
-            pass
-
-    vals_list = [cand_sol[key] for key, _ in x_items]
-
-    # print(f"{cand_obj=}")
-
-    # --- Explain infeasibility of heuristic, if encountered ---
-    # vars_ = model.getVars()
-    # cand_vec = [cand_sol[e] for e in model._y.keys()]
-    # x_by_name = {v.VarName: xv for v, xv in zip(vars_, cand_vec)}
-    # GurobiUtils.explain_infeasibility_of_point(model, x_by_name)
+    x_items = model._x_items
+    vars_list = [var for _, var in x_items]
+    vals_list = [1.0 if edge in selected else 0.0 for edge, _ in x_items]
+    cand_obj = sum(model._D[u][v]["weight"] for u, v in selected)
 
 
     # Get incumbent objective (minimization assumed)
@@ -146,16 +219,19 @@ def inject_suggested_solution(model, solution_edges, where):
 
     print(f"Primal heuristic - {cand_obj=}")
     try:
+        # Only y is specified. The continuous commodity-flow variables remain
+        # undefined and Gurobi completes them for the connected route.
         model.cbSetSolution(vars_list, vals_list)
 
-        # Optional: only MIPNODE gives you useful immediate feedback from cbUseSolution
         if where == GRB.Callback.MIPNODE:
-            obj = model.cbUseSolution()  # may return INFINITY if rejected
-            # You can log obj if you want, but keep logging minimal
+            obj = model.cbUseSolution()
+            if obj == GRB.INFINITY:
+                print("Primal heuristic was not accepted as a new incumbent")
+            else:
+                print(f"Primal heuristic accepted - objective={obj}")
 
-    except GurobiError:
-        # keep it quiet in callbacks unless you are debugging
-        pass
+    except GurobiError as error:
+        print(f"Primal heuristic injection failed: {error}")
 
 
 def cut_heuristic_callback(model, where):
@@ -181,7 +257,24 @@ def cut_heuristic_callback(model, where):
                 solution_edges, sol_weight, _, _ = InspectionPostsolve.ST_to_tour_christofides_scipy(model._G, tree_solution_edges,
                                                                                                      start=model._r)
 
-                inject_suggested_solution(model, solution_edges, where)
+                # Expanding a closed walk into binary arc support can destroy
+                # route balance when an oriented arc occurs more than once.
+                # Keep the tour when its support is feasible; otherwise use a
+                # bidirected tree, which is balanced and root-connected.
+                candidate = set(solution_edges)
+                violations = candidate_violations(model, candidate)
+                if violations:
+                    candidate = bidirected_tree_candidate(model, tree_solution_edges)
+                    fallback_violations = candidate_violations(model, candidate)
+                    if fallback_violations:
+                        print(
+                            "Primal heuristic skipped: "
+                            + "; ".join(fallback_violations[:5])
+                        )
+                        model._heuristic_counter = 1
+                        return
+
+                inject_suggested_solution(model, candidate, where)
 
                 model._heuristic_counter = 1
             else:

@@ -1,4 +1,5 @@
 import argparse
+import networkx as nx
 from GIP.heuristics import InspectionPostsolve
 from GIP.solver_utils import IP_to_Group
 from Utils.Readers import IRIS_reader, ExperimentPicker, SimInstanceIO
@@ -8,8 +9,7 @@ from GIP.solver_utils.SolutionValidation import validate_solution_groups
 from GIP.seperation import CutsOracle
 
 import os
-# import sys
-# sys.path.append("/home/adir/PycharmProjects/SteinerTreeSolver/Simulator")
+from Analysis.gurobi_trace import AnytimeTrace
 
 heuristic_freq = 10
 # TimeLim = 1000
@@ -19,7 +19,9 @@ use_nested_cuts = False
 use_creep_flow = False
 max_groups_per_iteration = 250
 
-def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name='', TimeLim=1000, out_path=''):
+def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name='', TimeLim=1000, out_path='', stats_out=None):
+    """stats_out: optional dict, filled with final solver stats and the anytime
+    (time, incumbent, bound) trace -- see Analysis.gurobi_trace."""
     m = Model("GroupCutset")
     m.setParam('TimeLimit', TimeLim)
     if out_path != '':
@@ -63,6 +65,7 @@ def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name=''
     m._G, m._D, m._S, m._r, m._I = G, D, S, root, I
     m._vertex_poi_vis = vertex_poi_vis
     m._x = dir_edge_to_var
+    m._sure_edges = {e for e in sure_edges if e in dir_edge_to_var}
     m._unc_groups = None
     m._heuristic_counter = 0
     m._Glp = G.copy()
@@ -74,40 +77,104 @@ def RunSolver(G, S, I, vertex_poi_vis, root, sure_edges=None, Experiment_name=''
         m._vars_list.append(var)
         m._index_to_edge.append(edge)
 
+    m._x_items = list(m._x.items())
+
     #___
 
     m.Params.LazyConstraints = 1
     m.Params.PreCrush = 1
-    m.optimize(cut_heuristic_callback)
+    _trace = AnytimeTrace()
+    m.optimize(_trace.wrap(cut_heuristic_callback))
+    if stats_out is not None:
+        stats_out.update(_trace.summary(m), formulation='GroupCutset')
 
     return edges_from_model(m, dir_edge_to_var)
 
 
 
+def candidate_violations(model, solution_edges):
+    """Return violations of the binary cutset formulation."""
+    selected = set(solution_edges)
+    violations = []
+
+    unknown = selected.difference(model._x.keys())
+    if unknown:
+        violations.append(f"{len(unknown)} edge(s) are not model variables")
+
+    missing_sure = model._sure_edges.difference(selected)
+    if missing_sure:
+        violations.append(f"{len(missing_sure)} required edge(s) are missing")
+
+    for v in model._D.nodes():
+        in_degree = sum((u, w) in selected for u, w in model._D.in_edges(v))
+        out_degree = sum((u, w) in selected for u, w in model._D.out_edges(v))
+        if in_degree != out_degree:
+            violations.append(
+                f"route imbalance at {v}: in={in_degree}, out={out_degree}"
+            )
+
+    if not any(u == model._r for u, _ in selected):
+        violations.append("no selected edge leaves the root")
+
+    for group_id, group_vertices in model._S.items():
+        if not any((u, v) in selected for u, v in model._D.in_edges(group_vertices)):
+            violations.append(f"group {group_id} has no selected in-edge")
+
+    # Check the lazy group-connectivity constraints before submitting the point.
+    H = nx.DiGraph()
+    H.add_nodes_from(model._D.nodes())
+    H.add_edges_from(selected.intersection(model._x.keys()))
+    reachable = nx.descendants(H, model._r) | {model._r}
+    disconnected_groups = [
+        group_id
+        for group_id, vertices in model._S.items()
+        if not reachable.intersection(vertices)
+    ]
+    if disconnected_groups:
+        violations.append(f"{len(disconnected_groups)} group(s) are root-disconnected")
+
+    return violations
+
+
+def bidirected_tree_candidate(model, tree_edges):
+    """Convert the undirected heuristic tree to a feasible binary route."""
+    support_edges = set(tree_edges)
+    support_edges.update(model._sure_edges)
+
+    # The model requires a nonempty root cycle even when all groups are visible
+    # at the root or only root-disconnected forced edges were supplied.
+    if not any(model._r in edge for edge in support_edges):
+        root_neighbors = list(model._G.neighbors(model._r))
+        if root_neighbors:
+            v = min(
+                root_neighbors,
+                key=lambda w: model._G[model._r][w]["weight"],
+            )
+            support_edges.add((model._r, v))
+
+    selected = set()
+    for u, v in support_edges:
+        if (u, v) in model._x:
+            selected.add((u, v))
+        if (v, u) in model._x:
+            selected.add((v, u))
+
+    return selected
+
+
 def inject_suggested_solution(model, solution_edges, where):
-    # Freeze consistent ordering once per call
-    x_items = list(model._x.items())  # [((u,v), var), ...]
-    vars_list = [var for key, var in x_items]
+    # The heuristic returns a walk, while the model uses binary arc variables.
+    # Work with its unique support for both the values and the objective.
+    selected = set(solution_edges)
+    unknown = selected.difference(model._x.keys())
+    if unknown:
+        print(f"Primal heuristic skipped: {len(unknown)} unknown edge(s)")
+        return
 
-    # Build candidate values keyed by edge
-    cand_sol = {key: 0 for key, _ in x_items}
-    cand_obj = 0.0
-    for (u, v) in solution_edges:
-        if (u, v) in cand_sol:
-            cand_sol[(u, v)] = 1.0
-            cand_obj += model._D[u][v]["weight"]
-        else:
-            # Edge not in var set: ignore or handle as error
-            pass
-
-    vals_list = [cand_sol[key] for key, _ in x_items]
-
-
-    # --- Explain infeasibility of heuristic, if encountered ---
-    # vars_ = model.getVars()
-    # cand_vec = [cand_sol[e] for e in model._x.keys()]
-    # x_by_name = {v.VarName: xv for v, xv in zip(vars_, cand_vec)}
-    # GurobiUtils.explain_infeasibility_of_point(model, x_by_name)
+    x_items = model._x_items
+    vars_list = [var for _, var in x_items]
+    vals_list = [1.0 if edge in selected else 0.0 for edge, _ in x_items]
+    cand_obj = sum(model._D[u][v]["weight"] for u, v in selected)
 
 
     # Get incumbent objective (minimization assumed)
@@ -127,14 +194,15 @@ def inject_suggested_solution(model, solution_edges, where):
     try:
         model.cbSetSolution(vars_list, vals_list)
 
-        # Optional: only MIPNODE gives you useful immediate feedback from cbUseSolution
         if where == GRB.Callback.MIPNODE:
-            obj = model.cbUseSolution()  # may return INFINITY if rejected
-            # You can log obj if you want, but keep logging minimal
+            obj = model.cbUseSolution()
+            if obj == GRB.INFINITY:
+                print("Primal heuristic was not accepted as a new incumbent")
+            else:
+                print(f"Primal heuristic accepted - objective={obj}")
 
-    except GurobiError:
-        # keep it quiet in callbacks unless you are debugging
-        pass
+    except GurobiError as error:
+        print(f"Primal heuristic injection failed: {error}")
 
 
 def cut_heuristic_callback(model, where):
@@ -175,7 +243,22 @@ def cut_heuristic_callback(model, where):
                                                                                                             tree_solution_edges,
                                                                                                             start=model._r)
 
-            inject_suggested_solution(model, solution_edges, where)
+            # Repeated directed arcs in a closed walk disappear when projected
+            # onto binary variables and can thereby destroy flow balance.
+            candidate = set(solution_edges)
+            violations = candidate_violations(model, candidate)
+            if violations:
+                candidate = bidirected_tree_candidate(model, tree_solution_edges)
+                fallback_violations = candidate_violations(model, candidate)
+                if fallback_violations:
+                    print(
+                        "Primal heuristic skipped: "
+                        + "; ".join(fallback_violations[:5])
+                    )
+                else:
+                    inject_suggested_solution(model, candidate, where)
+            else:
+                inject_suggested_solution(model, candidate, where)
 
             model._heuristic_counter = 1
         else:
