@@ -1,6 +1,3 @@
-from GIP.solver_utils import IP_to_Group
-from Utils.Readers import IRIS_reader
-
 import numpy as np
 import networkx as nx
 import scipy.sparse as sp
@@ -378,20 +375,3 @@ def ST_to_tour_christofides_scipy_greedy(
         #     tour_weight += G[u][v][weight]
 
         return tour_edges, tour_weight, matching_pairs, matching_edges
-
-# if __name__ == '__main__':
-#     vertex_file = "/home/adir/GIP_data/wafr24/base_graphs/drone_n1000_g1_vertex"
-#     edge_file = "/home/adir/GIP_data/wafr24/base_graphs/drone_n1000_g1_edge"
-#
-#     G, vertex_poi_vis = IRIS_reader.read_IRIS_to_inspection_graph(vertex_file, edge_file)
-#     I, S = IP_to_Group.vis_set_to_groups(vertex_poi_vis)
-#     root = 0
-#
-#     solution_edges, _ = TM_solver_groups_scipy(G, root, set(I), vertex_poi_vis)
-#     solution_weight = sum([G[u][v]['weight'] for u, v in solution_edges])
-#
-#     tour_edges, tour_weight, _, _ = ST_to_tour_christofides_scipy(G, solution_edges, start=root)
-#
-#     print(f"Tour: {tour_edges}")
-#     print(f"Tour Weight: {tour_weight}")
-#     # validate_solution_groups(G, S, tour_edges, is_tour=True)
